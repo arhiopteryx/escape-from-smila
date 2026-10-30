@@ -970,7 +970,7 @@ summary:focus-visible {
 }
 #game.training-mode .toast {
   max-width: min(62%, 400px);
-  padding: 6px 9px;
-  font-size: 11px;
+  padding: 5px 9px;
+  font-size: clamp(12px, 1vw, 14px);
   line-height: 1.25;
 }

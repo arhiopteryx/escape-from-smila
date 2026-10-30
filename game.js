@@ -5678,29 +5678,30 @@ function drawTrainingStage(t) {
   const cleanN = toiletStalls.filter((q) => q.progress >= 0.995).length;
   const phaseLabel =
     trainingPhase === "brush_pickup"
-      ? "ВЗЯТИ ЩІТКУ"
+      ? "1 · ВЗЯТИ ЩІТКУ"
       : trainingPhase === "brush_teeth"
-        ? "ПОЧИСТИТИ ЗУБИ"
+        ? "2 · ПОЧИСТИТИ ЗУБИ"
         : trainingPhase === "clean"
-          ? `КАБІНКИ ${cleanN}/3`
+          ? `3 · КАБІНКИ ${cleanN}/3`
           : trainingPhase === "return_brush"
-            ? "ПОВЕРНУТИ ЩІТКУ"
-            : "ВИХІД";
-  const statusLine = `${phaseLabel} · ВІЗИТИ ${toiletGuestVisits}/7`;
+            ? "4 · ПОВЕРНУТИ ЩІТКУ"
+            : "5 · ВИЙТИ";
+  const statusLine = `${phaseLabel}  ·  ВІЗИТИ ${toiletGuestVisits}/7`;
+  ctx.font = "bold 13px Arial";
+  const title = "04A · ЩІТКА → 3 КАБІНКИ";
+  const titleWidth = ctx.measureText(title).width;
   ctx.font = "bold 11px Arial";
-  const titleWidth = ctx.measureText("САНВУЗОЛ · ЩІТКА → 3 КАБІНКИ").width;
-  ctx.font = "bold 9px Arial";
   const statusWidth = ctx.measureText(statusLine).width;
-  const hudWidth = Math.ceil(Math.max(titleWidth, statusWidth) + 18);
+  const hudWidth = Math.ceil(Math.max(titleWidth, statusWidth) + 24);
   ctx.fillStyle = "#101923eF";
-  rounded(ctx, 18, 14, hudWidth, 42, 7);
+  rounded(ctx, 18, 14, hudWidth, 48, 7);
   ctx.fillStyle = "#f4e7ca";
-  ctx.font = "bold 11px Arial";
+  ctx.font = "bold 13px Arial";
   ctx.textAlign = "left";
-  ctx.fillText("САНВУЗОЛ · ЩІТКА → 3 КАБІНКИ", 27, 31);
+  ctx.fillText(title, 30, 34);
   ctx.fillStyle = "#d8e1d5";
-  ctx.font = "bold 9px Arial";
-  ctx.fillText(statusLine, 27, 46);
+  ctx.font = "bold 11px Arial";
+  ctx.fillText(statusLine, 30, 51);
   if (
     trainingPhase === "brush_pickup" &&
     Math.hypot(player.x - toothbrush.x, player.y - toothbrush.y) < 125
