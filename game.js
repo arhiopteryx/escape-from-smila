@@ -1,147 +1,7174 @@
-(()=>{'use strict';
-const DPR=Math.max(1,Math.min(2,window.devicePixelRatio||1));const canvas=document.getElementById('world'),mini=document.getElementById('minimap'),W=1280,H=800,MINI_W=240,MINI_H=150;canvas.width=W*DPR;canvas.height=H*DPR;mini.width=MINI_W*DPR;mini.height=MINI_H*DPR;canvas.tabIndex=0;const focusGame=()=>setTimeout(()=>canvas.focus({preventScroll:true}),40);let ctx=canvas.getContext('2d');const mctx=mini.getContext('2d');ctx.setTransform(DPR,0,0,DPR,0,0);mctx.setTransform(DPR,0,0,DPR,0,0);const world={w:3600,h:2800};
-const roadW=188,roadsX=[420,1080,1740,2400,3060],roadsY=[360,1000,1640,2280];
-const player={x:260,y:380,vx:0,vy:0,dir:0,r:24,speed:0,boost:0,boostCd:0,bump:0};
-const stopPool=[
- {x:420,y:360,brand:'ukrposhta',name:'УКРПОШТА',sub:'Листоноша легенд',color:'#efb72e'}, {x:1740,y:1000,brand:'ukrposhta',name:'УКРПОШТА',sub:'Відділення на розі',color:'#efb72e'}, {x:3060,y:1640,brand:'ukrposhta',name:'УКРПОШТА',sub:'Пошта міста',color:'#efb72e'}, {x:1080,y:2280,brand:'ukrposhta',name:'УКРПОШТА',sub:'Посилка чекає',color:'#efb72e'},
- {x:1080,y:360,brand:'nova',name:'НОВА ПОШТА',sub:'Швидше за голуба',color:'#e32636'}, {x:2400,y:1000,brand:'nova',name:'НОВА ПОШТА',sub:'Експрес-маршрут',color:'#e32636'}, {x:420,y:1640,brand:'nova',name:'НОВА ПОШТА',sub:'Нова адреса',color:'#e32636'}, {x:3060,y:2280,brand:'nova',name:'НОВА ПОШТА',sub:'Доставляємо легенди',color:'#e32636'},
- {x:2400,y:360,brand:'meest',name:'MEEST ПОШТА',sub:'Посилка крізь епохи',color:'#2873b9'}, {x:3060,y:1000,brand:'meest',name:'MEEST ПОШТА',sub:'Світ ближче',color:'#2873b9'}, {x:1080,y:1640,brand:'meest',name:'MEEST ПОШТА',sub:'Твоя наступна ціль',color:'#2873b9'}, {x:1740,y:2280,brand:'meest',name:'MEEST ПОШТА',sub:'Швидкий заїзд',color:'#2873b9'}
-];
-const logos={ukrposhta:new Image(),nova:new Image(),meest:new Image()},ermolinoLogo=new Image();logos.ukrposhta.src='assets/ukrposhta.png';logos.nova.src='assets/nova-poshta.png';logos.meest.src='assets/meest.png';ermolinoLogo.src='assets/ermolino-logo.png';
-let deliveries=[],lastStop=-1,courierToCafe=false;const cafeDestination={x:3060,y:360},chaseDestination={x:420,y:360};let chaseMarkerActive=false,chaseVan={x:0,y:0,vx:0,vy:0},churchEventUsed=false,azotEventUsed=false;function nextDelivery(){let candidates=stopPool.map((s,i)=>({s,i})).filter(({i})=>i!==lastStop);const pick=candidates[Math.floor(Math.random()*candidates.length)];lastStop=pick.i;deliveries=[{...pick.s,done:false}];return deliveries[0]}
-const keys=new Set();let touchAxisX=0,touchAxisY=0,gamepadMoveX=0,gamepadMoveY=0,padSpaceWas=false,padInteractWas=false;function movementAxes(){let x=(keys.has('KeyD')||keys.has('ArrowRight')?1:0)-(keys.has('KeyA')||keys.has('ArrowLeft')?1:0),y=(keys.has('KeyS')||keys.has('ArrowDown')?1:0)-(keys.has('KeyW')||keys.has('ArrowUp')?1:0);x=clamp(x+touchAxisX+gamepadMoveX,-1,1);y=clamp(y+touchAxisY+gamepadMoveY,-1,1);const m=Math.hypot(x,y);if(m>1){x/=m;y/=m}return{x,y}}let running=false,paused=false,won=false,time=60,score=0,delivered=0,streak=0,bestStreak=0,last=performance.now(),toastTimer=0,toastToken=0,hintTimer=0,soundOn=true,audio=null,gameEnded=false,stage=1,interactPressed=false,boostPressed=false;
-const cafeMenu=[{id:'syrnyky',name:'Сирники',icon:'●',x:140,c:'#d8a942'},{id:'pizza',name:'Квадратна піца',icon:'▦',x:390,c:'#cf654f'},{id:'pelmeni',name:'Пельмені Єрмоліно',x:640,c:'#8c9b72'},{id:'condensed',name:'Куп’янська згущонка',icon:'🥫',x:890,c:'#6b91c4'},{id:'sandwich',name:'Бутерброд зі свининою',icon:'🥪',x:1140,c:'#a67b55'}];
-const cafeTables=[{x:280,y:280},{x:640,y:280},{x:1000,y:280},{x:280,y:490},{x:640,y:490},{x:1000,y:490}];
-let cafeOrders=[],cafeServed=0,cafeOrdersCreated=0,heldDish=null,cafeActionCooldown=0;
-let seed=83617;function rand(){seed=(seed*1664525+1013904223)>>>0;return seed/4294967296}const buildings=[],trees=[],cars=[],puddles=[],pigeons=[],pedestrians=[];
-function nearRoad(x,y){return roadsX.some(a=>Math.abs(x-a)<roadW/2+115)||roadsY.some(a=>Math.abs(y-a)<roadW/2+115)}
-for(let x=100;x<world.w-120;x+=110)for(let y=100;y<world.h-100;y+=100){let px=x+(rand()-.5)*44,py=y+(rand()-.5)*40;if(!nearRoad(px,py)&&rand()>.23){let bw=55+rand()*46,bh=48+rand()*45;buildings.push({x:px,y:py,w:bw,h:bh,c:['#d6a66c','#c8bd9c','#b7c4bb','#d78970','#8eaaa3','#ddc48b'][Math.floor(rand()*6)],roof:['#765f55','#596b68','#94725b','#6a727c'][Math.floor(rand()*4)],kind:rand()})}else if(!nearRoad(px,py)&&rand()>.5)trees.push({x:px,y:py,r:13+rand()*10})}
-for(let i=0;i<30;i++){let rx=roadsX[Math.floor(rand()*roadsX.length)],ry=roadsY[Math.floor(rand()*roadsY.length)];let horizontal=rand()>.5;cars.push({x:horizontal?rand()*world.w:rx+(rand()-.5)*100,y:horizontal?ry+(rand()-.5)*100:rand()*world.h,horizontal,dir:rand()>.5?1:-1,color:['#d9d4bf','#729197','#bd755a','#394954','#e0b546'][Math.floor(rand()*5)],phase:rand()*6})}
-for(let i=0;i<30;i++)pigeons.push({x:150+rand()*(world.w-300),y:130+rand()*(world.h-260),phase:rand()*10});
-for(let i=0;i<74;i++){const horizontal=rand()>.5,road=horizontal?roadsY[Math.floor(rand()*roadsY.length)]:roadsX[Math.floor(rand()*roadsX.length)];pedestrians.push({x:horizontal?rand()*world.w:road+(rand()>.5?1:-1)*(roadW/2+26),y:horizontal?road+(rand()>.5?1:-1)*(roadW/2+26):rand()*world.h,axis:horizontal?'h':'v',dir:rand()>.5?1:-1,speed:22+rand()*35,color:['#d98261','#e4c66b','#77a6a1','#b9b7d1','#e1d2bc'][Math.floor(rand()*5)],stun:0,phase:rand()*9})}
-for(let i=0;i<24;i++)puddles.push({x:140+rand()*(world.w-280),y:140+rand()*(world.h-280),rx:13+rand()*20,ry:8+rand()*12});
-const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
-function rounded(c,x,y,w,h,r){c.beginPath();c.roundRect(x,y,w,h,r);c.fill()}
-function audioStart(){if(!soundOn)return;try{audio=audio||new(window.AudioContext||window.webkitAudioContext)();if(audio.state==='suspended')audio.resume()}catch{}}
-function tone(freq,dur=.12,type='sine',vol=.04,slide=0){if(!audio||!soundOn)return;const o=audio.createOscillator(),g=audio.createGain();o.type=type;o.frequency.setValueAtTime(freq,audio.currentTime);if(slide)o.frequency.exponentialRampToValueAtTime(Math.max(35,freq+slide),audio.currentTime+dur);g.gain.setValueAtTime(vol,audio.currentTime);g.gain.exponentialRampToValueAtTime(.001,audio.currentTime+dur);o.connect(g);g.connect(audio.destination);o.start();o.stop(audio.currentTime+dur)}
-function chime(){[660,880,1100].forEach((n,i)=>setTimeout(()=>tone(n,.25,'triangle',.065,180),i*90))}
-function setHint(html){const el=document.querySelector('.hint');el.innerHTML=html;el.classList.remove('hint-fade');clearTimeout(hintTimer);hintTimer=setTimeout(()=>el.classList.add('hint-fade'),4200)}
-function showToast(text){const el=document.getElementById('toast');el.textContent=text;el.classList.add('show');toastTimer=2.15;const token=++toastToken;setTimeout(()=>{if(token===toastToken){el.classList.remove('show');toastTimer=0}},2150)}
-function start(){focusGame();churchEventUsed=false;azotEventUsed=false;setHint(document.querySelector('.hint').innerHTML);stage=1;courierToCafe=false;delivered=0;score=0;time=60;document.getElementById('intro').classList.add('hidden');running=true;paused=false;gameEnded=false;audioStart();last=performance.now();showToast('WASD / СТРІЛКИ — РУХ · SPACE — РИВОК');scheduleLoop()}
-let trainingPhase='brush_pickup',toothbrush={x:210,y:570},toiletStalls=[],toiletGuests=[],toiletGuestTimer=0,toiletGuestVisits=0,trainingBrush=false,brushProgress=0,cleanElapsed=0,trainingDoor={x:1150,y:150},guestTimer=0,fieldEnemies=[],fieldShots=[],fieldLives=6,shotCooldown=0,fieldProgress=0,fieldTarget=4200,fieldAimX=0,fieldAimY=-1,fieldCar=null,fieldSway=0,fieldInvuln=0,fieldTracks=[],fieldDecoys=[],fieldTrackX=0,fieldTrackY=0,fieldSpawnTimer=.6,fieldBackdrop=null;function startLevel4(){focusGame();document.getElementById('toast').classList.remove('show');toastTimer=0;stage=5;document.getElementById('game').classList.remove('germany-mode');document.getElementById('game').classList.add('training-mode');gameEnded=false;running=true;paused=false;trainingPhase='brush_pickup';toothbrush={x:250,y:640};toiletStalls=[{x:320,y:325,progress:0,occupied:false,mess:true},{x:640,y:325,progress:0,occupied:false,mess:true},{x:960,y:325,progress:0,occupied:false,mess:true}];toiletGuests=[];toiletGuestTimer=1.1;toiletGuestVisits=0;trainingBrush=false;brushProgress=0;cleanElapsed=0;trainingDoor={x:1150,y:150};fieldEnemies=[];fieldShots=[];fieldLives=6;shotCooldown=0;fieldProgress=0;fieldCar=null;player.x=165;player.y=690;player.vx=0;player.vy=0;player.dir=-Math.PI/2;player.boost=0;player.boostCd=0;keys.clear();boostPressed=false;interactPressed=false;document.getElementById('game').classList.remove('cafe-mode');document.querySelector('.mapbox').style.display='none';document.querySelector('.speed').style.display='none';document.querySelector('.touch-action').style.display='block';setHint('');document.getElementById('delivered').parentElement.firstChild.textContent='🧽 КАБІНКИ ';document.getElementById('delivered').textContent='0 / 3';document.getElementById('timer').textContent='04A';document.getElementById('objectiveTitle').textContent='СПОЧАТКУ — ЧИСТИТЬ ЗУБИ';document.getElementById('objectiveText').textContent='Візьми щітку біля раковини. Потім відчисти три кабінки.';document.getElementById('intro').classList.add('hidden');document.getElementById('pause').classList.remove('show');audioStart();last=performance.now();scheduleLoop()}
-function startCornfieldRun(){document.getElementById('toast').classList.remove('show');toastTimer=0;stage=9;document.getElementById('game').classList.add('training-mode');document.getElementById('objectiveTitle').textContent='04B · КУКУРУДЗЯНЕ ПОЛЕ';trainingPhase='field';guestTimer=.65;fieldInvuln=0;fieldProgress=0;fieldTarget=4200;fieldAimX=0;fieldAimY=-1;fieldSway=0;fieldTracks=[];fieldDecoys=[];fieldTrackX=640;fieldTrackY=0;fieldSpawnTimer=.6;fieldCar={x:640,y:-fieldTarget,phase:0,ready:false};player.x=640;player.y=0;player.vx=0;player.vy=0;player.dir=-Math.PI/2;fieldEnemies=[];fieldShots=[];fieldLives=6;shotCooldown=0;document.getElementById('objectiveTitle').textContent='ПРОРВИСЯ ДО MAZDA';document.getElementById('objectiveText').textContent='Біжи крізь кукурудзу. Свіжі сліди показують маршрути; сирником відверни погоню в інший прохід.';document.querySelector('.touch-action').style.display='none';document.getElementById('delivered').parentElement.firstChild.textContent='🚙 ДО ВИЇЗДУ ';document.getElementById('delivered').textContent='0%';document.getElementById('timer').textContent='ПОЛЕ';setHint('');buildCornfieldBackdrop();document.querySelector('.touch [data-key="Space"]').textContent='● СИРНИКИ';last=performance.now()}
-function startCornfieldLevel(){focusGame();gameEnded=false;running=true;paused=false;document.getElementById('intro').classList.add('hidden');document.getElementById('pause').classList.remove('show');document.getElementById('game').classList.remove('arcade-mode','cafe-mode');document.querySelector('.mapbox').style.display='none';document.querySelector('.speed').style.display='none';document.querySelector('.touch-action').style.display='none';startCornfieldRun();last=performance.now();audioStart();scheduleLoop()}
-function drawEscapeTransition(t){ctx.clearRect(0,0,W,H);const g=ctx.createLinearGradient(0,0,0,H);g.addColorStop(0,'#344d42');g.addColorStop(.55,'#566344');g.addColorStop(1,'#1c2a22');ctx.fillStyle=g;ctx.fillRect(0,0,W,H);for(let i=0;i<9;i++){const x=i*160+Math.sin(t*2+i)*12;ctx.fillStyle='#456343';ctx.beginPath();ctx.ellipse(x,270+Math.sin(t*2.7+i)*12,66,192,0,0,Math.PI*2);ctx.fill();ctx.strokeStyle='#a9c468';ctx.lineWidth=6;ctx.beginPath();ctx.moveTo(x,90);ctx.lineTo(x+Math.sin(t+i)*20,510);ctx.stroke()}ctx.fillStyle='#101a20ed';rounded(ctx,190,120,900,140,18);ctx.fillStyle='#f5dfae';ctx.font='900 28px Arial';ctx.textAlign='center';ctx.fillText('ЗМІНУ ЗАВЕРШЕНО · ВИХІД У КУКУРУДЗУ',W/2,166);ctx.fillStyle='#e2e9df';ctx.font='bold 18px Arial';ctx.fillText('За службовими дверима вже чекає поле.',W/2,205);ctx.fillStyle='#ffd166';ctx.font='900 16px Arial';ctx.fillText('НАТИСНИ E АБО ENTER, ЩОБ ПОЧАТИ ОКРЕМИЙ ЕТАП 04B',W/2,235);drawTrainingAvatar(640,590,t)}
-function startLevel3(){focusGame();document.getElementById('game').classList.remove('germany-mode','training-mode');churchEventUsed=false;azotEventUsed=false;stage=3;gameEnded=false;running=true;paused=false;time=60;chaseMarkerActive=false;courierToCafe=false;deliveries=[];keys.clear();boostPressed=false;player.x=1740;player.y=1640;player.vx=0;player.vy=0;player.dir=0;player.boost=0;player.boostCd=0;chaseVan={x:1270,y:1430,vx:0,vy:0};buildChaseBackdrop();document.getElementById('game').classList.remove('cafe-mode');document.querySelector('.mapbox').style.display='block';document.querySelector('.speed').style.display='block';document.querySelector('.touch-action').style.display='none';setHint('РУХ <b>WASD / СТРІЛКИ</b>　 РИВОК <b>SPACE</b>　 ПАУЗА <b>ESC</b>');document.getElementById('delivered').parentElement.firstChild.textContent='🚨 ПОГОНЯ ';document.getElementById('delivered').textContent='—';document.getElementById('timer').textContent='01:00';document.getElementById('objectiveTitle').textContent='ТІКАЙ ВІД БУСА';document.getElementById('objectiveText').textContent='Уникай машин і тримай швидкість. Шукай шлях крізь місто.';document.getElementById('intro').classList.add('hidden');document.getElementById('pause').classList.remove('show');audioStart();showToast('WASD / СТРІЛКИ — РУХ · SPACE — РИВОК · БУС ПОЗАДУ!');last=performance.now();scheduleLoop()}
-let forest=null,germany=null,vrMaze=null;let vrWave=1,vrEnemies=[],vrShots=[],vrEnemyShots=[],vrPlayer={x:640,hp:3,invuln:0},vrBoss=null,vrFireCooldown=0,vrEnemyFire=0,vrWavePause=0,vrDashPressed=false,vrDashCooldown=0,vrStars=[];function showVrCutscene(){running=false;paused=false;const layer=document.getElementById('intro');layer.classList.remove('hidden');layer.innerHTML=`<section class="card vr-story-card"><style>
-.vr-story-card{width:min(820px,94vw)}.vr-scene{height:290px;position:relative;overflow:hidden;border:2px solid #526671;border-radius:18px;background:linear-gradient(#263440 0 72%,#17232a 72%);box-shadow:inset 0 0 55px #07121d;margin:18px 0 20px}.vr-scene:before{content:"";position:absolute;left:5%;right:5%;top:12%;height:57%;border:8px solid #18232d;border-radius:9px;background:linear-gradient(#344d67 0 70%,#293d4c 70%)}.vr-church{position:absolute;right:19%;top:45px;color:#d9d0aa;font-size:45px;text-shadow:0 0 14px #ffd783}.vr-door{position:absolute;left:7%;bottom:27%;width:82px;height:150px;background:#332f32;border:7px solid #111a20;border-radius:8px 8px 0 0;transform:perspective(250px) rotateY(-15deg);box-shadow:inset -12px 0 #67513a}.vr-stairs{position:absolute;left:0;bottom:24%;width:31%;height:48%;background:repeating-linear-gradient(0deg,#64605a 0 10px,#252f34 10px 16px);clip-path:polygon(0 0,100% 60%,100% 100%,0 100%);opacity:.8}.vr-floor{position:absolute;bottom:0;left:0;right:0;height:26%;background:repeating-linear-gradient(90deg,#344044 0 2px,transparent 2px 85px),linear-gradient(#283438,#11191d)}.vr-prop{position:absolute;bottom:22%;font-size:48px;filter:drop-shadow(0 7px 4px #0009)}.vr-scooter{left:19%}.vr-pack{right:18%}.vr-walker,.vr-sitter{position:absolute;bottom:20%;font-size:74px;filter:drop-shadow(0 8px 5px #000b);transition:all .7s ease}.vr-walker{left:8%;animation:vr-enter 2s ease-in-out infinite alternate}.vr-sitter{left:46%;transform:scale(.92);display:none}.vr-visor{position:absolute;left:calc(46% + 8px);bottom:42%;font-size:38px;display:none;filter:drop-shadow(0 0 12px #4ff6ff)}.vr-scene[data-step="1"] .vr-walker,.vr-scene[data-step="2"] .vr-walker{display:none}.vr-scene[data-step="1"] .vr-sitter,.vr-scene[data-step="2"] .vr-sitter{display:block}.vr-scene[data-step="2"] .vr-visor{display:block}.vr-scene[data-step="0"] .vr-prop{opacity:.28}.vr-caption{position:absolute;left:0;right:0;bottom:10px;text-align:center;color:#f7e8cc;font-size:13px;font-weight:800;letter-spacing:.08em;text-shadow:0 2px 5px #000}.vr-story-card h2{margin:8px 0;color:#f6e5c8}.vr-story-card .mission{margin:12px 0}.vr-story-card .story-dots{display:flex;gap:8px;justify-content:center;margin:10px}.vr-story-card .story-dots i{width:9px;height:9px;border-radius:50%;background:#63727c}.vr-story-card .story-dots i.on{background:#56e4e6;box-shadow:0 0 10px #56e4e6}@keyframes vr-enter{from{left:8%}to{left:25%}}
-</style><div class="eyebrow">КАТСЦЕНА · РІВЕНЬ 5 · ПІДВАЛ</div><div class="vr-scene" id="vrScene" data-step="0"><div class="vr-door"></div><div class="vr-stairs"></div><div class="vr-church">✝</div><div class="vr-floor"></div><div class="vr-walker">🧍🏻‍♂️</div><div class="vr-sitter">🧎🏻‍♂️</div><div class="vr-visor">🥽</div><div class="vr-caption" id="vrCaption">ГЕРОЙ СПУСКАЄТЬСЯ В СИРИЙ ПІДВАЛ</div></div><h2 id="vrStoryTitle">Двері зачиняються за спиною.</h2><p id="vrStoryText">Він залишає самокат і рюкзак біля стіни. У маленькому вікні видніється церква.</p><div class="story-dots"><i class="on"></i><i></i><i></i></div><button id="vrStoryNext">ДАЛІ　→</button><p class="micro">Після катсцени почнеться VR-головоломка: перенеси сирники, заглуши бетонні труби й вимкни завод.</p></section>`;let step=0;const captions=['ГЕРОЙ СПУСКАЄТЬСЯ В СИРИЙ ПІДВАЛ','НА СТАРОМУ ЕКРАНІ ЗАВАНТАЖУЄТЬСЯ ПЛАН ЦЕХУ','ШОЛОМ НАДЯГНУТО · ВХІД У VR-ЦЕХ'];const titles=['Двері зачиняються за спиною.','Цех працює на критичному тиску.','Світ навколо зникає.'];const texts=['У маленькому вікні видніється церква. На столі блимає старий шолом.','На екрані блимає схема: зважити платформу, заглушити три труби й повернути клапан.','У VR можна переносити сирники, обходити блоки на конвеєрі та керувати заводом клавішею E.'];const advance=()=>{step++;if(step>=3){startLevel5();return}document.getElementById('vrScene').dataset.step=String(step);document.getElementById('vrCaption').textContent=captions[step];document.getElementById('vrStoryTitle').textContent=titles[step];document.getElementById('vrStoryText').textContent=texts[step];document.querySelectorAll('.story-dots i').forEach((dot,i)=>dot.classList.toggle('on',i===step));document.getElementById('vrStoryNext').textContent=step===2?'ЗНЕШКОДИТИ ЗАВОД　→':'ДАЛІ　→'};document.getElementById('vrStoryNext').onclick=advance}
-function buildFactoryBackdrop(){const c=document.createElement('canvas');c.width=W;c.height=H;const g=c.getContext('2d');g.fillStyle='#26252b';g.fillRect(0,0,W,H);g.fillStyle='#45232f';g.fillRect(0,0,W,185);for(let row=0;row<9;row++){const yy=row*21;for(let col=-1;col<27;col++){const xx=col*52+(row%2)*26;g.fillStyle=['#7e3444','#8f3a4a','#71303d','#9a4350'][(row*7+col*3+80)%4];g.fillRect(xx+2,yy+2,48,17);g.strokeStyle='#4a2630';g.lineWidth=2;g.strokeRect(xx+2,yy+2,48,17)}}for(const x of [0,48,96,W-116,W-68,W-20]){g.fillStyle='#512937';g.fillRect(x,185,20,H-185);for(let y=205;y<H;y+=23){g.fillStyle='#8d3c4b';g.fillRect(x+2,y,16,18);g.strokeStyle='#48252f';g.strokeRect(x+2,y,16,18)}}g.fillStyle='#34343a';g.fillRect(128,185,W-256,H-185);for(let y=220;y<H;y+=90){g.strokeStyle='#4a4a50';g.lineWidth=2;g.beginPath();g.moveTo(82,y);g.lineTo(W-82,y);g.stroke()}for(let x=125;x<W-100;x+=128){g.strokeStyle='#414147';g.beginPath();g.moveTo(x,190);g.lineTo(x,H);g.stroke()}g.fillStyle='#201c25';rounded(g,420,24,440,102,10);g.strokeStyle='#ff3e9b';g.lineWidth=4;g.shadowColor='#ff3e9b';g.shadowBlur=20;g.strokeRect(432,32,416,86);g.shadowBlur=0;g.fillStyle='#f3d1b1';g.font='900 25px Arial';g.textAlign='center';g.fillText('БЕТОННИЙ ЗАВОД',640,70);g.fillStyle='#5ce9e1';g.font='bold 17px Arial';g.fillText('СИХОВА',640,98);for(const y of [206,345,514,700]){g.strokeStyle=y%2?'#31dfd2':'#ff3e9b';g.lineWidth=5;g.shadowColor=g.strokeStyle;g.shadowBlur=13;g.beginPath();g.moveTo(78,y);g.lineTo(132,y);g.moveTo(W-132,y);g.lineTo(W-78,y);g.stroke();g.shadowBlur=0}g.fillStyle='#f3bd59';for(const x of [105,1175]){g.beginPath();g.moveTo(x,178);g.lineTo(x+13,178);g.lineTo(x+6,204);g.closePath();g.fill()}return c}
-function startLevel5(){focusGame();document.getElementById('game').classList.remove('germany-mode','forest-mode');stage=6;document.getElementById('game').classList.remove('training-mode');gameEnded=false;running=true;paused=false;score=0;vrMaze={backdrop:buildFactoryBackdrop(),player:{x:640,y:710,hp:5,invuln:0,dir:-Math.PI/2},phase:0,clock:0,plate:{x:300,y:560,active:false},supply:{x:145,y:642,count:4},carrying:false,dropped:[],sockets:[{x:300,y:315,plugged:false},{x:640,y:300,plugged:false},{x:980,y:315,plugged:false}],valve:{x:1060,y:260,turned:false},panel:{x:640,y:185,active:false},hazards:[],hazardTimer:1.1,score:0,invuln:0};vrPlayer=vrMaze.player;vrDashCooldown=0;keys.clear();boostPressed=false;interactPressed=false;document.getElementById('game').classList.add('arcade-mode');document.getElementById('game').classList.remove('cafe-mode');document.querySelector('.mapbox').style.display='none';document.querySelector('.speed').style.display='none';document.querySelector('.touch-action').style.display='block';document.getElementById('interactTouch').textContent='E · ВЗЯТИ / ВСТАВИТИ';document.querySelector('.touch [data-key="Space"]').style.display='none';document.getElementById('vrDashTouch').style.display='block';setHint('');document.getElementById('delivered').parentElement.firstChild.textContent='🏭 МЕХАНІЗМИ ';document.getElementById('delivered').textContent='0 / 5';document.getElementById('timer').textContent='VR';document.getElementById('objectiveTitle').textContent='БЕТОННИЙ ЗАВОД СИХОВА';document.getElementById('objectiveText').textContent='Перенеси сирник на платформу, заглуши три труби, поверни клапан і вимкни завод.';document.getElementById('intro').classList.add('hidden');document.getElementById('pause').classList.remove('show');audioStart();showToast('E · ПІДНЯТИ / ПОСТАВИТИ СИРНИК · WASD · РУХ');last=performance.now();scheduleLoop()}
-function factoryPhaseName(m){return ['1/4 · ЗВАЖ ПЛАТФОРМУ','2/4 · ЗАГЛУШИ ТРУБИ 1 → 2 → 3','3/4 · ПОВЕРНИ КЛАПАН','4/4 · ВИМКНИ ЗАВОД'][m.phase]||'ЗАВОД ЗНЕШКОДЖЕНО'}
-function factoryInteract(m){const p=m.player,dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);if((m.phase===0||m.phase===1)&&m.carrying){if(m.phase===0&&dist(p,m.plate)<80){m.carrying=false;m.plate.active=true;m.phase=1;m.score+=100;score+=100;document.getElementById('objectiveTitle').textContent=factoryPhaseName(m);document.getElementById('delivered').textContent='1 / 5';showToast('ПЛАТФОРМУ ЗВАЖЕНО · ТЕПЕР ЗАГЛУШИ ТРИ ТРУБИ');chime();return}if(m.phase===1){const i=m.sockets.findIndex(q=>!q.plugged);if(i>=0&&dist(p,m.sockets[i])<82){m.carrying=false;m.sockets[i].plugged=true;m.score+=100;score+=100;const n=m.sockets.filter(q=>q.plugged).length;document.getElementById('delivered').textContent=`${1+n} / 5`;if(n===3){m.phase=2;document.getElementById('objectiveTitle').textContent=factoryPhaseName(m);showToast('ТРУБИ ЗАГЛУШЕНО · ДІСТАНЬСЯ ДО КЛАПАНА')}else showToast(`ТРУБУ ${i+1} ЗАГЛУШЕНО · ЗАЛИШИЛОСЯ ${3-n}`);chime();return}}}else if((m.phase===0||m.phase===1)&&!m.carrying){let pick=-1,best=73;for(let i=0;i<m.dropped.length;i++){const d=dist(p,m.dropped[i]);if(d<best){best=d;pick=i}}if(pick>=0){m.dropped.splice(pick,1);m.carrying=true;showToast('СИРНИК ПІДНЯТО · НЕСИ ДО ПІДСВІЧЕНОЇ ЦІЛІ');return}if(m.supply.count>0&&dist(p,m.supply)<84){m.supply.count--;m.carrying=true;showToast(`ПОРЦІЮ ВЗЯТО · НА СТІЙЦІ ЩЕ ${m.supply.count}`);chime();return}}if(m.phase===2&&!m.carrying&&dist(p,m.valve)<90){m.valve.turned=true;m.phase=3;m.score+=150;score+=150;document.getElementById('objectiveTitle').textContent=factoryPhaseName(m);document.getElementById('delivered').textContent='4 / 5';showToast('ПОТІК СПРЯМОВАНО В РЕЗЕРВУАР · ДО ПУЛЬТА');chime();return}if(m.phase===3&&!m.carrying&&dist(p,m.panel)<90){m.panel.active=true;m.score+=250;score+=250;document.getElementById('delivered').textContent='5 / 5';document.getElementById('score').textContent=String(score).padStart(4,'0');showVrVictory()}}
-function updateVrArcade(dt,t){const m=vrMaze,p=m.player,{x:dx,y:dy}=movementAxes(),speed=m.carrying?220:320;p.invuln=Math.max(0,p.invuln-dt);vrDashCooldown=Math.max(0,vrDashCooldown-dt);if(dx||dy){p.dir=Math.atan2(dy,dx);p.x=clamp(p.x+dx*speed*dt,56,W-56);p.y=clamp(p.y+dy*speed*dt,190,H-55)}if((keys.has('ShiftLeft')||keys.has('ShiftRight')||vrDashPressed)&&vrDashCooldown<=0){const n=Math.hypot(dx,dy)||1,dash=m.carrying?95:155;p.x=clamp(p.x+(dx||Math.cos(p.dir))/n*dash,56,W-56);p.y=clamp(p.y+(dy||Math.sin(p.dir))/n*dash,190,H-55);p.invuln=Math.max(p.invuln,.4);vrDashCooldown=1.1;vrDashPressed=false;tone(260,.08,'triangle',.03,180)}vrDashPressed=false;m.clock+=dt;if(interactPressed){interactPressed=false;factoryInteract(m)}if(m.plate.active){m.hazardTimer-=dt;if(m.hazardTimer<=0){const lane=Math.random()<.5?468:585,direction=Math.random()<.5?1:-1;m.hazards.push({x:direction>0?-44:W+44,y:lane,vx:direction*(190+m.sockets.filter(q=>q.plugged).length*28),r:23,phase:Math.random()*7});if(m.phase>=2&&Math.random()<.42)m.hazards.push({x:120+Math.random()*(W-240),y:190,vy:260,r:17,warning:.45});m.hazardTimer=Math.max(.62,1.18-m.sockets.filter(q=>q.plugged).length*.12)}}for(const h of m.hazards){h.phase+=dt*7;if(h.warning>0)h.warning-=dt;else{h.x+=(h.vx||0)*dt;h.y+=(h.vy||0)*dt}if(p.invuln<=0&&!h.warning&&Math.hypot(p.x-h.x,p.y-h.y)<h.r+21){p.hp--;p.invuln=1.1;if(m.carrying){m.carrying=false;m.dropped.push({x:p.x,y:p.y+18});showToast('УДАР! СИРНИК ВПАВ — ПІДБЕРИ ЙОГО')}else showToast(`БЕТОННИЙ БЛОК · ${p.hp} ♥`);h.x=-100;tone(120,.16,'sawtooth',.03,-80);if(p.hp<=0){showVrFail();return}}}m.hazards=m.hazards.filter(h=>h.x>-85&&h.x<W+85&&h.y<H+35);document.getElementById('delivered').textContent=m.phase===0?'0 / 5':m.phase===1?`${1+m.sockets.filter(q=>q.plugged).length} / 5`:m.phase===2?'4 / 5':'4 / 5';document.getElementById('score').textContent=String(score).padStart(4,'0');if(toastTimer>0){toastTimer-=dt;if(toastTimer<=0)document.getElementById('toast').classList.remove('show')}}
-function drawVrArcade(t){drawVrGameField(t)}function drawBasementBackground(t){ctx.clearRect(0,0,W,H);const wall=ctx.createLinearGradient(0,0,0,640);wall.addColorStop(0,'#25303a');wall.addColorStop(1,'#414047');ctx.fillStyle=wall;ctx.fillRect(0,0,W,H);ctx.fillStyle='#1a232b';ctx.fillRect(0,0,W,24);for(let i=0;i<8;i++){const x=i*177+Math.sin(i*7)*9;ctx.strokeStyle=i%2?'#68706c':'#5b6262';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(x,36);ctx.lineTo(x+12,78);ctx.lineTo(x-3,107);ctx.lineTo(x+15,132);ctx.stroke();ctx.fillStyle='rgba(111,144,139,.12)';ctx.beginPath();ctx.ellipse(x+24,117,23,48,.2,0,Math.PI*2);ctx.fill()}ctx.fillStyle='#151f26';ctx.fillRect(0,628,W,172);ctx.fillStyle='#465052';for(let x=0;x<W;x+=82){ctx.strokeStyle='#323b3d';ctx.lineWidth=2;ctx.strokeRect(x,636,80,74)}ctx.fillStyle='rgba(70,135,147,.25)';ctx.beginPath();ctx.ellipse(840,755,210,26,-.08,0,Math.PI*2);ctx.fill();ctx.strokeStyle='rgba(147,212,221,.36)';ctx.beginPath();ctx.ellipse(840,752,164,13,-.08,Math.PI,Math.PI*2);ctx.stroke();ctx.fillStyle='#18212a';rounded(ctx,944,15,310,120,12);ctx.fillStyle='#18233a';rounded(ctx,957,25,284,98,7);ctx.fillStyle='#28385a';ctx.beginPath();ctx.moveTo(970,112);ctx.lineTo(1001,83);ctx.lineTo(1038,92);ctx.lineTo(1072,51);ctx.lineTo(1104,92);ctx.lineTo(1130,76);ctx.lineTo(1160,106);ctx.closePath();ctx.fill();ctx.fillStyle='#29374b';ctx.fillRect(1058,43,29,69);ctx.fillStyle='#ffdf8b';ctx.fillRect(1065,65,6,10);ctx.fillRect(1076,65,6,10);ctx.fillStyle='#dce9d0';ctx.fillRect(1070,31,4,16);ctx.fillRect(1064,36,16,3);ctx.fillStyle='#222d3c';ctx.fillRect(969,113,275,7);ctx.fillStyle='#e9c875';ctx.font='bold 10px Arial,sans-serif';ctx.textAlign='center';ctx.fillText('ЦЕРКВА ЗА ВІКНОМ',1100,130);drawBasementScooter(238,741);drawBasementBackpack(1055,744);drawBasementViewer(640,726,t)}function drawBasementViewer(x,y,t){ctx.save();ctx.translate(x,y+Math.sin(t*1.3)*1.5);ctx.fillStyle='#080d14';ctx.beginPath();ctx.ellipse(0,54,83,18,0,0,Math.PI*2);ctx.fill();ctx.fillStyle='#202b39';rounded(ctx,-56,8,112,70,25);ctx.fillStyle='#3b5962';rounded(ctx,-40,5,80,35,16);ctx.fillStyle='#202831';ctx.beginPath();ctx.arc(0,-12,37,0,Math.PI*2);ctx.fill();ctx.fillStyle='#d2aa80';ctx.beginPath();ctx.arc(0,-10,28,0,Math.PI*2);ctx.fill();ctx.fillStyle='#151e2c';rounded(ctx,-39,-28,78,32,12);ctx.fillStyle='#45ddeb';rounded(ctx,-30,-23,60,19,8);ctx.fillStyle='#172633';ctx.fillRect(-3,-22,6,18);ctx.strokeStyle='#89999a';ctx.lineWidth=5;ctx.beginPath();ctx.arc(0,-17,43,Math.PI,Math.PI*2);ctx.stroke();ctx.fillStyle='#bf8a52';ctx.beginPath();ctx.arc(-52,2,5,0,Math.PI*2);ctx.arc(52,2,5,0,Math.PI*2);ctx.fill();ctx.restore()}function drawBasementScooter(x,y){ctx.save();ctx.translate(x,y);ctx.fillStyle='#080d12';ctx.beginPath();ctx.arc(-62,0,21,0,Math.PI*2);ctx.arc(62,0,21,0,Math.PI*2);ctx.fill();ctx.strokeStyle='#829294';ctx.lineWidth=5;ctx.beginPath();ctx.arc(-62,0,13,0,Math.PI*2);ctx.arc(62,0,13,0,Math.PI*2);ctx.stroke();ctx.strokeStyle='#41dbc9';ctx.lineWidth=11;ctx.beginPath();ctx.moveTo(-60,-5);ctx.lineTo(54,-5);ctx.stroke();ctx.strokeStyle='#d4ddd2';ctx.lineWidth=6;ctx.beginPath();ctx.moveTo(50,-7);ctx.lineTo(43,-59);ctx.lineTo(70,-64);ctx.stroke();ctx.strokeStyle='#edc96c';ctx.lineWidth=7;ctx.beginPath();ctx.moveTo(55,-64);ctx.lineTo(87,-64);ctx.stroke();ctx.restore()}function drawBasementBackpack(x,y){ctx.save();ctx.translate(x,y);ctx.fillStyle='#101820';ctx.beginPath();ctx.ellipse(0,30,48,13,0,0,Math.PI*2);ctx.fill();ctx.fillStyle='#293845';rounded(ctx,-36,-39,72,68,17);ctx.fillStyle='#a96d42';rounded(ctx,-27,-32,54,54,13);ctx.fillStyle='#e5bc6d';rounded(ctx,-12,-25,24,8,3);ctx.fillStyle='#172834';rounded(ctx,-19,-7,38,27,7);ctx.fillStyle='#d6a953';ctx.fillRect(-3,-5,6,23);ctx.restore()}function drawVrSyrnyk(x,y,size){ctx.save();ctx.translate(x,y);ctx.shadowColor='#ffc55f';ctx.shadowBlur=12;for(const [dx,dy,r] of [[-size*.38,size*.12,size*.39],[size*.38,size*.12,size*.39],[0,-size*.3,size*.4]]){ctx.fillStyle='#a85e36';ctx.beginPath();ctx.arc(dx,dy,r+2,0,Math.PI*2);ctx.fill();ctx.fillStyle='#f3c66f';ctx.beginPath();ctx.arc(dx,dy,r,0,Math.PI*2);ctx.fill();ctx.fillStyle='#fff0bf';ctx.beginPath();ctx.arc(dx-2,dy-2,r*.4,0,Math.PI*2);ctx.fill()}ctx.restore()}
-function drawVrGameField(t){const m=vrMaze,p=m.player,nextSocket=m.sockets.find(q=>!q.plugged),ctx2=ctx;ctx2.clearRect(0,0,W,H);ctx2.drawImage(m.backdrop,0,0);for(const y of [468,585]){ctx2.fillStyle='#17191e';rounded(ctx2,80,y-31,W-160,62,9);ctx2.fillStyle='#504b53';rounded(ctx2,88,y-24,W-176,48,7);ctx2.save();ctx2.beginPath();ctx2.roundRect(88,y-24,W-176,48,7);ctx2.clip();for(let x=-50;x<W+40;x+=48){const xx=(x+t*135%(W+90));ctx2.fillStyle='#7c7178';ctx2.fillRect(xx,y-20,27,40);ctx2.fillStyle='#332a32';ctx2.fillRect(xx+29,y-20,6,40)}ctx2.restore();ctx2.strokeStyle='#f1499b';ctx2.lineWidth=2;ctx2.strokeRect(84,y-28,W-168,56)}ctx2.strokeStyle=m.plate.active?'#59f2df':'#826579';ctx2.lineWidth=7;ctx2.shadowColor=ctx2.strokeStyle;ctx2.shadowBlur=13;ctx2.beginPath();ctx2.moveTo(195,502);ctx2.lineTo(195,420);ctx2.lineTo(300,420);ctx2.lineTo(300,347);ctx2.lineTo(980,347);ctx2.lineTo(980,260);ctx2.stroke();ctx2.shadowBlur=0;for(let i=0;i<3;i++){const q=m.sockets[i];ctx2.strokeStyle=q.plugged?'#58f3b3':q===nextSocket?'#ff4ca7':'#38dce6';ctx2.lineWidth=8;ctx2.beginPath();ctx2.moveTo(q.x,347);ctx2.lineTo(q.x,q.y+28);ctx2.stroke();ctx2.fillStyle='#282b30';rounded(ctx2,q.x-43,q.y-37,86,74,12);ctx2.strokeStyle=q.plugged?'#5affb5':q===nextSocket?'#ff4ca7':'#56e8e9';ctx2.lineWidth=4;ctx2.strokeRect(q.x-39,q.y-33,78,66);ctx2.fillStyle=q.plugged?'#5affb5':'#222b31';ctx2.beginPath();ctx2.arc(q.x,q.y,19,0,Math.PI*2);ctx2.fill();ctx2.strokeStyle=q.plugged?'#d5ffde':'#cfbca4';ctx2.lineWidth=4;ctx2.beginPath();ctx2.arc(q.x,q.y,12,0,Math.PI*2);ctx2.stroke();ctx2.fillStyle='#f3e7ce';ctx2.font='bold 10px Arial';ctx2.textAlign='center';ctx2.fillText(`ТРУБА ${i+1}${q.plugged?' · OK':''}`,q.x,q.y-47)}ctx2.fillStyle='#282b30';rounded(ctx2,m.supply.x-52,m.supply.y-35,104,70,10);ctx2.strokeStyle='#f2bc5c';ctx2.lineWidth=3;ctx2.strokeRect(m.supply.x-48,m.supply.y-31,96,62);ctx2.fillStyle='#f2c870';ctx2.font='bold 10px Arial';ctx2.textAlign='center';ctx2.fillText('СТІЙКА СИРНИКІВ',m.supply.x,m.supply.y-43);ctx2.fillStyle='#fff2cc';ctx2.fillText(`ПОРЦІЙ: ${m.supply.count}`,m.supply.x,m.supply.y+53);for(let i=0;i<Math.min(3,m.supply.count);i++)drawVrSyrnyk(m.supply.x-20+i*20,m.supply.y,9);ctx2.fillStyle=m.plate.active?'#55f0d5':'#46424b';rounded(ctx2,m.plate.x-58,m.plate.y-19,116,38,8);ctx2.strokeStyle=m.plate.active?'#62fff0':'#de9c56';ctx2.lineWidth=4;ctx2.strokeRect(m.plate.x-54,m.plate.y-15,108,30);ctx2.fillStyle='#f6e5ca';ctx2.font='bold 10px Arial';ctx2.textAlign='center';ctx2.fillText(m.plate.active?'ПЛАТФОРМА · АКТИВНА':'ПЛАТФОРМА · ВАГА',m.plate.x,m.plate.y+4);ctx2.save();ctx2.translate(m.valve.x,m.valve.y);ctx2.fillStyle='#252b31';rounded(ctx2,-45,-40,90,80,12);ctx2.strokeStyle=m.valve.turned?'#5af3b4':'#ff559f';ctx2.lineWidth=5;ctx2.strokeRect(-40,-35,80,70);ctx2.strokeStyle='#d7b68a';ctx2.lineWidth=8;ctx2.beginPath();ctx2.arc(0,0,22,0,Math.PI*2);ctx2.stroke();ctx2.beginPath();ctx2.moveTo(-28,0);ctx2.lineTo(28,0);ctx2.moveTo(0,-28);ctx2.lineTo(0,28);ctx2.stroke();ctx2.fillStyle='#fff0d5';ctx2.font='bold 10px Arial';ctx2.textAlign='center';ctx2.fillText(m.valve.turned?'ПОТІК → РЕЗЕРВУАР':'КЛАПАН · ЗАКРИТИЙ',0,55);ctx2.restore();ctx2.fillStyle=m.panel.active?'#5af3b4':'#222a30';rounded(ctx2,m.panel.x-55,m.panel.y-28,110,56,10);ctx2.strokeStyle=m.panel.active?'#5af3b4':'#ff4d9d';ctx2.lineWidth=4;ctx2.strokeRect(m.panel.x-51,m.panel.y-24,102,48);ctx2.fillStyle='#f4dfbd';ctx2.font='bold 10px Arial';ctx2.textAlign='center';ctx2.fillText(m.panel.active?'ЗАВОД ВИМКНЕНО':'АВАРІЙНИЙ ПУЛЬТ',m.panel.x,m.panel.y+4);ctx2.fillStyle='#4b5360';rounded(ctx2,242,540,116,42,7);ctx2.fillStyle=m.plate.active?'#ff68b1':'#c69054';ctx2.beginPath();ctx2.arc(m.plate.x,m.plate.y,18,0,Math.PI*2);ctx2.fill();for(const q of m.dropped)drawVrSyrnyk(q.x,q.y,17);for(const h of m.hazards){if(h.warning>0){ctx2.save();ctx2.globalAlpha=.4+.3*Math.sin(t*19);ctx2.fillStyle='#ff465f';ctx2.beginPath();ctx2.arc(h.x,h.y+35,28,0,Math.PI*2);ctx2.fill();ctx2.fillStyle='#fff';ctx2.font='bold 9px Arial';ctx2.textAlign='center';ctx2.fillText('УВАГА',h.x,h.y+38);ctx2.restore()}else{ctx2.save();ctx2.translate(h.x,h.y);ctx2.rotate(Math.sin(h.phase)*.08);ctx2.fillStyle='#99928b';rounded(ctx2,-h.r,-h.r,h.r*2,h.r*2,5);ctx2.fillStyle='#c5b9a4';ctx2.fillRect(-h.r+4,-h.r+7,h.r*2-8,5);ctx2.restore()}}drawTrainingAvatar(p.x,p.y,t);if(m.carrying)drawVrSyrnyk(p.x+20,p.y-30,17);const prompt=(x,y,text)=>{ctx2.fillStyle='#101923e8';rounded(ctx2,x-66,y-18,132,22,6);ctx2.fillStyle='#fff';ctx2.font='bold 10px Arial';ctx2.textAlign='center';ctx2.fillText(text,x,y-3)};if((m.phase===0||m.phase===1)&&!m.carrying&&Math.hypot(p.x-m.supply.x,p.y-m.supply.y)<150)prompt(m.supply.x,m.supply.y-56,m.dropped.length?'E · ПІДНЯТИ':'E · ВЗЯТИ СИРНИК');if(!m.carrying&&m.dropped.length){let near=null,nd=145;for(const item of m.dropped){const d=Math.hypot(p.x-item.x,p.y-item.y);if(d<nd){near=item;nd=d}}if(near)prompt(near.x,near.y-30,'E · ПІДНЯТИ СИРНИК')}if(m.carrying&&m.phase===0&&Math.hypot(p.x-m.plate.x,p.y-m.plate.y)<145)prompt(m.plate.x,m.plate.y-45,'E · ПОСТАВИТИ НА ПЛАТФОРМУ');if(m.carrying&&m.phase===1){const q=m.sockets.find(v=>!v.plugged);if(q&&Math.hypot(p.x-q.x,p.y-q.y)<150)prompt(q.x,q.y-57,`E · ЗАГЛУШИТИ ТРУБУ ${m.sockets.indexOf(q)+1}`)}if(m.phase===2&&Math.hypot(p.x-m.valve.x,p.y-m.valve.y)<150)prompt(m.valve.x,m.valve.y-63,'E · ПОВЕРНУТИ КЛАПАН');if(m.phase===3&&Math.hypot(p.x-m.panel.x,p.y-m.panel.y)<150)prompt(m.panel.x,m.panel.y-55,'E · ВИМКНУТИ ЗАВОД');ctx2.fillStyle='#09131bee';rounded(ctx2,18,15,392,112,11);ctx2.fillStyle='#f5ddbf';ctx2.font='900 14px Arial';ctx2.textAlign='left';ctx2.fillText('БЕТОННИЙ ЗАВОД СИХОВА · VR',31,38);ctx2.fillStyle='#69eee1';ctx2.font='bold 11px Arial';ctx2.fillText(factoryPhaseName(m),31,59);ctx2.fillStyle='#fff';ctx2.font='bold 11px Arial';ctx2.fillText(`ЖИТТЯ ${'♥ '.repeat(p.hp)}  ·  В РУКАХ ${m.carrying?'СИРНИК':'НІЧОГО'}  ·  ОЧКИ ${String(m.score).padStart(4,'0')}`,31,81);ctx2.fillStyle='#2a373b';rounded(ctx2,31,92,364,8,4);ctx2.fillStyle='#ff4a9f';rounded(ctx2,33,94,360*(m.phase/4),4,2);ctx2.fillStyle='#f4e1c5';ctx2.font='bold 10px Arial';ctx2.fillText('WASD · РУХ     E · ПІДНЯТИ / ПОСТАВИТИ     SHIFT · РИВОК',31,116);ctx2.fillStyle='#12171cdd';rounded(ctx2,412,750,456,28,7);ctx2.fillStyle='#ffe4aa';ctx2.font='bold 10px Arial';ctx2.textAlign='center';ctx2.fillText(m.phase===0?'ДОНЕСИ СИРНИК ДО ВАГОВОЇ ПЛАТФОРМИ':m.phase===1?'ВСТАВ ТРИ СИРНИКИ-ЗАГЛУШКИ В ПІДСВІЧЕНІ ТРУБИ':m.phase===2?'ПОВЕРНИ КЛАПАН ДО ПОТОКУ В РЕЗЕРВУАР':m.phase===3?'ДОБЕРИСЯ ДО АВАРІЙНОГО ПУЛЬТА':'ЗАВОД ЗУПИНЕНО',640,768)}
-function drawVrEnemy(e,t){ctx.save();ctx.translate(e.x,e.y+Math.sin(t*5+e.phase)*4);ctx.shadowColor='#ff46c8';ctx.shadowBlur=14;ctx.fillStyle=e.hp>1?'#b04ce0':'#ed4fab';ctx.beginPath();ctx.ellipse(0,0,22,16,0,0,Math.PI*2);ctx.fill();ctx.fillStyle='#ffe788';ctx.fillRect(-11,-5,7,7);ctx.fillRect(4,-5,7,7);ctx.strokeStyle='#f8a1dc';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(-15,9);ctx.lineTo(-28,20);ctx.moveTo(15,9);ctx.lineTo(28,20);ctx.stroke();ctx.restore()}function drawVrBoss(b,t){ctx.save();ctx.translate(b.x,b.y+Math.sin(t*2)*8);ctx.shadowColor='#ff9a55';ctx.shadowBlur=24;ctx.fillStyle='#575960';ctx.beginPath();ctx.moveTo(-94,48);ctx.lineTo(-92,-12);ctx.lineTo(-72,-12);ctx.lineTo(-72,-68);ctx.lineTo(-42,-68);ctx.lineTo(-42,-35);ctx.lineTo(-22,-35);ctx.lineTo(-22,-91);ctx.lineTo(17,-91);ctx.lineTo(17,-51);ctx.lineTo(43,-51);ctx.lineTo(43,-76);ctx.lineTo(74,-76);ctx.lineTo(74,-16);ctx.lineTo(94,-16);ctx.lineTo(94,48);ctx.closePath();ctx.fill();ctx.fillStyle='#8a8b89';ctx.fillRect(-67,-58,21,96);ctx.fillRect(-15,-80,27,118);ctx.fillRect(49,-65,20,103);ctx.fillStyle='#d3a36d';ctx.fillRect(-78,-57,4,88);ctx.fillRect(-6,-77,4,110);ctx.fillRect(58,-62,4,93);ctx.fillStyle='#303640';ctx.fillRect(-105,43,210,16);ctx.fillStyle='#ad5e47';ctx.fillRect(-82,16,48,20);ctx.fillRect(30,9,49,27);ctx.strokeStyle='#d4c5a0';ctx.lineWidth=8;ctx.beginPath();ctx.moveTo(-70,-45);ctx.lineTo(-38,-15);ctx.lineTo(-8,-15);ctx.lineTo(8,-43);ctx.lineTo(44,-43);ctx.stroke();ctx.fillStyle='#efbe5e';for(const x of [-79,-54,-9,15,56,78])ctx.fillRect(x,49,8,5);ctx.fillStyle='#fa6d4f';ctx.beginPath();ctx.arc(0,-96,9+Math.sin(t*12)*2,0,Math.PI*2);ctx.fill();ctx.restore();ctx.fillStyle='#362a32';rounded(ctx,430,68,420,13,7);ctx.fillStyle='#ff9a55';rounded(ctx,432,70,416*(b.hp/b.maxHp),9,5);ctx.fillStyle='#fff';ctx.font='bold 13px Arial,sans-serif';ctx.textAlign='center';ctx.fillText('БЕТОННИЙ ЗАВОД «СМІЛАБЕТОН»',640,62)}
-function showVrVictory(){running=false;gameEnded=true;const layer=document.getElementById('intro');layer.classList.remove('hidden');layer.innerHTML=`<section class="card"><div class="eyebrow">АРКАДУ ПРОЙДЕНО · ПОВЕРНЕННЯ ДО ПІДВАЛУ</div><h1>Бетонний завод зупинено.<br><em>Шолом знятий.</em></h1><p>Герой зважує платформу сирником, заглушає три бетонні труби, повертає клапан і натискає аварійне вимкнення. За ними — нічне повітря та дорога до лісу.</p><div class="mission"><span>🥞 Платформа й труби: <b>заблоковано</b></span><span>🏭 Клапан і завод: <b>вимкнено</b></span></div><button id="leaveBasementBtn">ЗНЯТИ ШОЛОМ І ВИЙТИ　→</button><button id="replayVrBtn" class="secondary">ЩЕ ОДНА ГРА</button></section>`;document.getElementById('leaveBasementBtn').onclick=showForestTransition;document.getElementById('replayVrBtn').onclick=showVrCutscene}function showForestTransition(){const layer=document.getElementById('intro');layer.classList.remove('hidden');layer.innerHTML=`<section class="card"><div class="eyebrow">НАСТУПНИЙ МАРШРУТ · РІВЕНЬ 6</div><h1>Лісовий режим.<br><em>Бігти — тільки вперед.</em></h1><p>Герой виходить із підвалу, закидає рюкзак на плечі й рушає крізь нічний ліс до колючого паркану. З усіх боків наближаються прикордонники, собаки та ведмеді.</p><div class="mission"><span>🌲 Біжи знизу вгору</span><span>🥞 Відстрілюйся сирниками</span><span>✂️ Переріж дріт і тікай</span></div><button id="startForestBtn">УВІЙТИ ДО ЛІСУ　→</button><button id="forestMenuBtn" class="secondary">ДО ГОЛОВНОГО МЕНЮ</button></section>`;document.getElementById('startForestBtn').onclick=startForestLevel;document.getElementById('forestMenuBtn').onclick=()=>location.reload()}
-function forestRoutePoints(){return[{x:1300,y:6200},...forest.waypoints.map(q=>({x:q.x,y:q.y})),{x:1300,y:400}]}
-function forestRouteX(y){const pts=forestRoutePoints();for(let i=0;i<pts.length-1;i++){const a=pts[i],b=pts[i+1];if(y<=a.y&&y>=b.y){const k=(a.y-y)/(a.y-b.y);return a.x+(b.x-a.x)*k}}return 1300}
-function forestGoal(){return forest.checkpointIndex<forest.waypoints.length?forest.waypoints[forest.checkpointIndex]:{x:1300,y:450}}
-function startForestLevel(){focusGame();document.getElementById('game').classList.remove('germany-mode','training-mode','arcade-mode','cafe-mode');document.getElementById('game').classList.add('forest-mode');stage=7;gameEnded=false;running=true;paused=false;const worldW=2600,worldH=6700,startY=6200,targetY=400;forest={worldW,worldH,startY,targetY,x:1300,y:startY,cameraX:660,cameraY:startY-520,vx:0,vy:0,screenX:640,screenY:520,hp:6,invuln:0,shots:[],enemies:[],trees:[],hazards:[],tracks:[],waypoints:[{x:2180,y:5050,done:false},{x:470,y:3720,done:false},{x:2140,y:2410,done:false},{x:900,y:1220,done:false}],checkpointIndex:0,progress:0,dashCd:0,fire:0,spawn:.65,ending:0,cutProgress:0,score:0,dirX:0,dirY:-1,phase:'run',mud:0,toastCooldown:0};for(let i=0;i<620;i++){const y=100+Math.random()*(worldH-200),x=80+Math.random()*(worldW-160);if(Math.abs(x-forestRouteX(y))>145)forest.trees.push({x,y,r:22+Math.random()*42,seed:Math.random()*9,kind:Math.random()<.2?'pine':'broadleaf'})}for(let i=0;i<46;i++){const y=700+Math.random()*5200,x=100+Math.random()*(worldW-200);forest.hazards.push({x,y,type:i%3===0?'bog':'mine',armed:true,warn:0,phase:Math.random()*8})}keys.clear();boostPressed=false;interactPressed=false;document.querySelector('.mapbox').style.display='none';document.querySelector('.speed').style.display='none';document.querySelector('.touch-action').style.display='block';document.getElementById('interactTouch').textContent='E · КУСАЧКИ';document.getElementById('vrDashTouch').style.display='none';document.querySelector('.touch [data-key="Space"]').style.display='';document.querySelector('.touch [data-key="Space"]').textContent='● СИРНИКИ';setHint('');document.getElementById('delivered').parentElement.firstChild.textContent='🌲 МАРКЕР ';document.getElementById('delivered').textContent='0 / 4';document.getElementById('timer').textContent='ЛІС';document.getElementById('objectiveTitle').textContent='ДО КОЛЮЧОГО ПАРКАНУ';document.getElementById('objectiveText').textContent='Йди до чотирьох маяків за компасом. Тримайся стежки, кидай сирники й бережись мін та боліт.';document.getElementById('intro').classList.add('hidden');document.getElementById('pause').classList.remove('show');audioStart();showToast('WASD · РУХ  |  SPACE · СИРНИК  |  КОМПАС → НАСТУПНИЙ МАЯК');last=performance.now();scheduleLoop()}
-function spawnForestEnemy(){const edge=Math.floor(Math.random()*4),r=360+Math.random()*210,cx=forest.x,cy=forest.y;let x=edge===0?cx-r:edge===1?cx+r:cx+(Math.random()-.5)*850,y=edge===2?cy-r:edge===3?cy+r:cy+(Math.random()-.5)*620;const type=['guard','dog','bear','dog'][Math.floor(Math.random()*4)];forest.enemies.push({x:clamp(x,35,forest.worldW-35),y:clamp(y,forest.targetY+25,forest.startY-20),type,hp:type==='bear'?3:type==='guard'?2:1,speed:type==='dog'?182:type==='bear'?105:128,phase:Math.random()*8,windup:type==='bear'?1+Math.random()*.8:0,charge:0,chargeX:0,chargeY:0,lastTrackX:x,lastTrackY:y})}
-function updateForest(dt,t){if(forest.ending){forest.ending+=dt;forest.cameraX+=(clamp(forest.x-W/2,0,forest.worldW-W)-forest.cameraX)*Math.min(1,dt*5);forest.cameraY+=(clamp(forest.y-H*.65,0,forest.worldH-H)-forest.cameraY)*Math.min(1,dt*5);if(forest.ending>3.1){showForestVictory();return}return}const axes=movementAxes(),rawX=forest.phase==='cut'?0:axes.x,rawY=forest.phase==='cut'?0:axes.y,mag=Math.hypot(rawX,rawY)||1,dx=rawX/mag,dy=rawY/mag;if(dx||dy){forest.dirX=dx;forest.dirY=dy}const trailDist=Math.abs(forest.x-forestRouteX(forest.y)),inBrush=trailDist>185;let speed=inBrush?205:365;if(forest.mud>0){forest.mud=Math.max(0,forest.mud-dt);speed*=.58}const oldX=forest.x,oldY=forest.y;forest.vx=dx*speed;forest.vy=dy*speed;if((keys.has('ShiftLeft')||keys.has('ShiftRight')||vrDashPressed)&&forest.dashCd<=0){const dash=inBrush?175:245;forest.x=clamp(forest.x+dx*dash,35,forest.worldW-35);forest.y=clamp(forest.y+dy*dash,forest.targetY+25,forest.startY-20);forest.dashCd=1.05;forest.invuln=Math.max(forest.invuln,.3);vrDashPressed=false;tone(330,.07,'triangle',.025,150)}else{forest.x=clamp(forest.x+forest.vx*dt,35,forest.worldW-35);forest.y=clamp(forest.y+forest.vy*dt,forest.targetY+25,forest.startY-20)}vrDashPressed=false;forest.dashCd=Math.max(0,forest.dashCd-dt);forest.invuln=Math.max(0,forest.invuln-dt);forest.fire=Math.max(0,forest.fire-dt);forest.progress=forest.startY-forest.y;const aim=Math.hypot(forest.dirX,forest.dirY)||1;if((keys.has('Space')||boostPressed)&&forest.fire<=0){forest.shots.push({x:forest.x+forest.dirX/aim*28,y:forest.y+forest.dirY/aim*28,vx:forest.dirX/aim*830,vy:forest.dirY/aim*830,life:1.3});forest.fire=.24;tone(580,.05,'triangle',.025,120)}boostPressed=false;for(const q of forest.shots){q.x+=q.vx*dt;q.y+=q.vy*dt;q.life-=dt}forest.shots=forest.shots.filter(q=>q.life>0&&Math.hypot(q.x-forest.x,q.y-forest.y)<1050);if(Math.hypot(forest.x-oldX,forest.y-oldY)>24){forest.tracks.push({x:forest.x,y:forest.y,type:'hero',life:7});if(forest.tracks.length>170)forest.tracks.shift()}for(const q of forest.tracks)q.life-=dt;forest.tracks=forest.tracks.filter(q=>q.life>0);forest.spawn-=dt;if(forest.phase==='run'&&forest.spawn<=0&&forest.enemies.length<10){forest.spawn=Math.max(.56,.92-forest.checkpointIndex*.06);spawnForestEnemy();if(forest.checkpointIndex>1&&Math.random()<.38)spawnForestEnemy()}for(let i=forest.enemies.length-1;i>=0;i--){const e=forest.enemies[i];e.phase+=dt*4.5;const vx=forest.x-e.x,vy=forest.y-e.y,d=Math.hypot(vx,vy)||1;if(e.type==='bear'){if(e.charge>0){e.x+=e.chargeX*e.speed*3.2*dt;e.y+=e.chargeY*e.speed*3.2*dt;e.charge-=dt}else if(e.windup>0){e.windup-=dt;if(e.windup<=0){const n=Math.hypot(vx,vy)||1;e.chargeX=vx/n;e.chargeY=vy/n;e.charge=.62}}else if(d<410){e.windup=.95}}else{const lead=e.type==='guard'?.5:0,tx=forest.x+forest.vx*lead,ty=forest.y+forest.vy*lead,n=Math.hypot(tx-e.x,ty-e.y)||1;e.x+=(tx-e.x)/n*e.speed*dt+Math.sin(e.phase)*9*dt;e.y+=(ty-e.y)/n*e.speed*dt}if(Math.hypot(e.x-e.lastTrackX,e.y-e.lastTrackY)>35){forest.tracks.push({x:e.x,y:e.y,type:e.type,life:5});if(forest.tracks.length>280)forest.tracks.shift();e.lastTrackX=e.x;e.lastTrackY=e.y}for(let j=forest.shots.length-1;j>=0;j--){const q=forest.shots[j];if(Math.hypot(q.x-e.x,q.y-e.y)<34){forest.shots.splice(j,1);e.hp--;if(e.hp<=0){forest.enemies.splice(i,1);score+=120;forest.score+=120;chime();break}}}if(!forest.enemies.includes(e))continue;if(forest.invuln<=0&&Math.hypot(forest.x-e.x,forest.y-e.y)<38){forest.hp--;forest.invuln=1.12;forest.x=clamp(forest.x+(forest.x-e.x)*.8,35,forest.worldW-35);forest.y=clamp(forest.y+52,forest.targetY+25,forest.startY-20);e.x=clamp(e.x+(e.x-forest.x)*.5,35,forest.worldW-35);showToast(`ПОГОНЯ ЗБИЛА ЗІ СТЕЖКИ · ♥ ${forest.hp}`);if(forest.hp<=0){showForestFail();return}}}forest.hazards.forEach(h=>{if(!h.armed)return;h.phase+=dt*4;const d=Math.hypot(forest.x-h.x,forest.y-h.y);if(h.type==='bog'){if(d<64)forest.mud=.7}else if(d<100){h.warn=(h.warn||0)+dt;if(h.warn>.72){h.armed=false;if(d<58&&forest.invuln<=0){forest.hp--;forest.invuln=1.05;showToast(`МІНА · ♥ ${forest.hp}`);if(forest.hp<=0)showForestFail()}}}else h.warn=0});if(gameEnded)return;const goal=forestGoal(),goalDist=Math.hypot(forest.x-goal.x,forest.y-goal.y);if(forest.checkpointIndex<forest.waypoints.length&&goalDist<108){const q=forest.waypoints[forest.checkpointIndex];q.done=true;forest.checkpointIndex++;forest.hp=Math.min(6,forest.hp+1);score+=250;forest.score+=250;document.getElementById('delivered').textContent=`${forest.checkpointIndex} / 4`;document.getElementById('objectiveTitle').textContent=forest.checkpointIndex<4?`МАРКЕР ${forest.checkpointIndex+1} / 4 · КОМПАС`:'УСІ МАРКЕРИ ЗІБРАНО · ДО ПАРКАНУ';showToast(`МАЯК ${forest.checkpointIndex} / 4 · +1 СИЛА · +250 ОЧОК`);for(let n=0;n<2;n++)spawnForestEnemy()}else if(forest.checkpointIndex===forest.waypoints.length&&Math.hypot(forest.x-1300,forest.y-450)<112&&forest.phase==='run'){forest.phase='cut';forest.cutProgress=0;forest.x=1300;forest.y=450;showToast('ЗНАЙДИ КУСАЧКИ · УТРИМУЙ E БІЛЯ ДРОТУ')}if(forest.phase==='cut'){const close=Math.hypot(forest.x-1300,forest.y-450)<120;if(close&&keys.has('KeyE'))forest.cutProgress=Math.min(2.4,forest.cutProgress+dt);else forest.cutProgress=Math.max(0,forest.cutProgress-dt*.55);if(forest.cutProgress>=2.4){forest.phase='cutDone';forest.ending=.01;forest.enemies=[];chime();showToast('ДРІТ ПЕРЕРІЗАНО · ПРОСКАКУЙ У ПРОХІД')}}forest.cameraX+=(clamp(forest.x-W/2,0,forest.worldW-W)-forest.cameraX)*Math.min(1,dt*6);forest.cameraY+=(clamp(forest.y-H*.62,0,forest.worldH-H)-forest.cameraY)*Math.min(1,dt*6);forest.screenX=forest.x-forest.cameraX;forest.screenY=forest.y-forest.cameraY;document.getElementById('score').textContent=String(score).padStart(4,'0');if(toastTimer>0){toastTimer-=dt;if(toastTimer<=0)document.getElementById('toast').classList.remove('show')}}
-function drawForest(t){ctx.clearRect(0,0,W,H);const cameraX=forest.cameraX,cameraY=forest.cameraY;const bg=ctx.createLinearGradient(0,0,0,H);bg.addColorStop(0,'#a5c871');bg.addColorStop(.45,'#7fa64c');bg.addColorStop(1,'#587b40');ctx.fillStyle=bg;ctx.fillRect(0,0,W,H);for(let y=Math.floor(cameraY/128)*128;y<cameraY+H+128;y+=128){for(let x=Math.floor(cameraX/128)*128;x<cameraX+W+128;x+=128){const sx=x-cameraX,sy=y-cameraY,seed=Math.abs(((x/128)|0)*31+((y/128)|0)*17)%8;ctx.fillStyle=seed%2?'#87ad50':'#80a44b';ctx.fillRect(sx,sy,128,128);ctx.strokeStyle='#759846';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(sx,sy+64);ctx.lineTo(sx+128,sy+64);ctx.stroke();for(let k=0;k<3;k++){const px=sx+((seed*17+k*39)%120),py=sy+((seed*31+k*47)%120);ctx.fillStyle=k%2?'#bfd46a':'#e2d982';ctx.beginPath();ctx.arc(px,py,2+k%2,0,Math.PI*2);ctx.fill()}}}const pts=forestRoutePoints();ctx.lineJoin='round';ctx.lineCap='round';ctx.beginPath();pts.forEach((q,i)=>{const x=q.x-cameraX,y=q.y-cameraY;if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y)});ctx.strokeStyle='#526640';ctx.lineWidth=102;ctx.stroke();ctx.strokeStyle='#b79a5f';ctx.lineWidth=82;ctx.stroke();ctx.strokeStyle='#d0b478';ctx.lineWidth=3;ctx.setLineDash([18,18]);ctx.stroke();ctx.setLineDash([]);for(const tree of forest.trees){const sx=tree.x-cameraX,sy=tree.y-cameraY;if(sx<-100||sx>W+100||sy<-100||sy>H+100)continue;const sway=Math.sin(t*1.7+tree.seed)*3;ctx.fillStyle='#34482c';ctx.beginPath();ctx.ellipse(sx+6,sy+17,tree.r*1.05,tree.r*.65,0,0,Math.PI*2);ctx.fill();ctx.fillStyle=tree.kind==='pine'?'#2d603e':'#3e743e';for(let k=0;k<3;k++){const ax=sx+sway+Math.cos(k*2.1)*tree.r*.42,ay=sy+Math.sin(k*2.1)*tree.r*.3;ctx.beginPath();ctx.arc(ax,ay,tree.r*.58,0,Math.PI*2);ctx.fill()}ctx.fillStyle='#77a94e';ctx.beginPath();ctx.arc(sx-7+sway,sy-8,tree.r*.28,0,Math.PI*2);ctx.fill()}for(const q of forest.tracks){const x=q.x-cameraX,y=q.y-cameraY;if(x<0||x>W||y<0||y>H)continue;ctx.globalAlpha=q.life/(q.type==='hero'?7:5)*.6;ctx.strokeStyle=q.type==='hero'?'#f1df9b':q.type==='dog'?'#c48c54':q.type==='bear'?'#756152':'#df6d62';ctx.lineWidth=5;ctx.beginPath();ctx.ellipse(x,y,10,4,Math.sin(x+y),0,Math.PI*2);ctx.stroke();ctx.globalAlpha=1}for(const h of forest.hazards){const x=h.x-cameraX,y=h.y-cameraY;if(x<-45||x>W+45||y<-45||y>H+45)continue;if(h.type==='bog'){ctx.fillStyle='#244f52';ctx.beginPath();ctx.ellipse(x,y,40,26,Math.sin(t)*.08,0,Math.PI*2);ctx.fill();ctx.strokeStyle='#77b9a3';ctx.lineWidth=3;ctx.stroke();ctx.fillStyle='#9bd7c3';ctx.font='bold 9px Arial';ctx.textAlign='center';ctx.fillText('БОЛОТО · ПОВІЛЬНО',x,y+4)}else if(h.armed){ctx.fillStyle=h.warn>0?'#ff7e46':'#992f32';ctx.beginPath();ctx.arc(x,y,11+Math.sin(t*8)*2,0,Math.PI*2);ctx.fill();ctx.strokeStyle=h.warn>0?'#ffe16b':'#e85d43';ctx.lineWidth=2;ctx.beginPath();ctx.arc(x,y,h.warn>0?50:20,0,Math.PI*2);ctx.stroke();ctx.fillStyle='#fff1b7';ctx.beginPath();ctx.arc(x,y,3,0,Math.PI*2);ctx.fill()}}for(const shot of forest.shots)drawVrSyrnyk(shot.x-cameraX,shot.y-cameraY,13);for(const e of forest.enemies){const x=e.x-cameraX,y=e.y-cameraY;if(x<-70||x>W+70||y<-70||y>H+70)continue;if(e.type==='bear'&&e.windup>0){ctx.strokeStyle='#ff8a4c';ctx.globalAlpha=.45+.3*Math.sin(t*14);ctx.lineWidth=4;ctx.beginPath();ctx.arc(x,y,44+Math.sin(t*8)*5,0,Math.PI*2);ctx.stroke();ctx.globalAlpha=1}drawForestEnemy({...e,x,y},t)}const fenceY=forest.targetY-cameraY;if(fenceY>-120&&fenceY<H+130){drawForestFence(fenceY,forest.phase==='cutDone'&&forest.ending>1);drawForestFlags(245,fenceY-154);drawForestFlags(W-330,fenceY-154)}drawForestHero(forest.x-cameraX,forest.y-cameraY,t,forest.phase==='cut');const target=forestGoal();drawForestCompass(W-85,H-95,forest.x,forest.y,target.x,target.y);drawForestMap();ctx.fillStyle='#0c2018eD';rounded(ctx,18,15,392,103,11);ctx.fillStyle='#fff1ce';ctx.font='900 15px Arial';ctx.textAlign='left';ctx.fillText('ЛІС · МАРШРУТ УТЕЧІ',31,39);ctx.fillStyle='#f1d989';ctx.font='bold 11px Arial';ctx.fillText(`МАЯКИ ${forest.checkpointIndex}/4   ·   ♥ ${forest.hp}   ·   ОЧКИ ${String(forest.score).padStart(4,'0')}`,31,60);ctx.fillStyle='#26372c';rounded(ctx,31,70,364,8,4);ctx.fillStyle='#77e1b5';rounded(ctx,33,72,360*forest.checkpointIndex/4,4,2);ctx.fillStyle='#e3ead6';ctx.font='bold 10px Arial';ctx.fillText('WASD · РУХ    SPACE · СИРНИК    SHIFT · РИВОК',31,100);if(forest.phase==='cut'){ctx.fillStyle='#0b1714ee';rounded(ctx,W/2-170,H-92,340,55,9);ctx.fillStyle='#fff1cf';ctx.font='bold 12px Arial';ctx.textAlign='center';ctx.fillText('УТРИМУЙ E · ПЕРЕРІЗАТИ ДРІТ',W/2,H-70);ctx.fillStyle='#293a34';rounded(ctx,W/2-140,H-57,280,9,4);ctx.fillStyle='#ffd269';rounded(ctx,W/2-137,H-54,274*forest.cutProgress/2.4,4,2)}else if(forest.phase==='run'){const goalDist=Math.hypot(forest.x-target.x,forest.y-target.y);if(goalDist<210){ctx.fillStyle='#0b1714e8';rounded(ctx,W/2-100,H-75,200,32,8);ctx.fillStyle='#fff2cb';ctx.font='bold 11px Arial';ctx.textAlign='center';ctx.fillText(forest.checkpointIndex<4?'ІДИ ДО МАРКЕРА':'E · КУСАЧКИ',W/2,H-54)}}if(forest.ending>0&&forest.phase==='cutDone'){ctx.fillStyle='#f6edce';ctx.font='900 17px Arial';ctx.textAlign='center';ctx.fillText('ДРІТ ПЕРЕРІЗАНО · ПРОСКАКУЙ У ПРОХІД',W/2,145)}}
-function drawForestMap(){const x=1030,y=15,w=235,h=140;ctx.fillStyle='#0b1b19e8';rounded(ctx,x,y,w,140,10);ctx.fillStyle='#fff0ca';ctx.font='bold 10px Arial';ctx.textAlign='center';ctx.fillText('СТЕЖКА · НАСТУПНИЙ МАЯК',x+w/2,y+16);const pts=forestRoutePoints(),sx=(w-30)/forest.worldW,sy=100/(forest.startY-forest.targetY),ox=x+15,oy=y+23;ctx.strokeStyle='#a99566';ctx.lineWidth=3;ctx.beginPath();pts.forEach((q,i)=>{const px=ox+q.x*sx,py=oy+(forest.startY-q.y)*sy;if(i)ctx.lineTo(px,py);else ctx.moveTo(px,py)});ctx.stroke();for(const q of forest.waypoints){ctx.fillStyle=q.done?'#65efba':'#ffcc65';ctx.beginPath();ctx.arc(ox+q.x*sx,oy+(forest.startY-q.y)*sy,3.5,0,Math.PI*2);ctx.fill()}ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(ox+forest.x*sx,oy+(forest.startY-forest.y)*sy,4.5,0,Math.PI*2);ctx.fill();ctx.fillStyle='#e34e54';ctx.beginPath();ctx.arc(ox+1300*sx,oy+(forest.startY-400)*sy,4,0,Math.PI*2);ctx.fill()}
-function drawForestHero(x,y,t,cutting){ctx.save();ctx.translate(x,y+Math.sin(t*13)*1.5);ctx.fillStyle='#0005';ctx.beginPath();ctx.ellipse(3,18,25,14,0,0,Math.PI*2);ctx.fill();ctx.fillStyle='#17282c';rounded(ctx,-13,4,10,23,4);rounded(ctx,3,4,10,23,4);ctx.fillStyle='#d0b67c';rounded(ctx,-16,22,13,7,3);rounded(ctx,3,22,13,7,3);ctx.fillStyle='#d4774e';rounded(ctx,-17,-18,34,31,8);ctx.fillStyle='#f0c393';ctx.beginPath();ctx.arc(0,-29,14,0,Math.PI*2);ctx.fill();ctx.fillStyle='#4a3528';ctx.beginPath();ctx.arc(0,-34,14,Math.PI,Math.PI*2);ctx.fill();ctx.fillStyle='#334d3e';rounded(ctx,-21,0,42,14,6);ctx.fillStyle='#c34b44';rounded(ctx,cutting?15:12,-18,cutting?15:10,27,4);if(cutting){ctx.fillStyle='#e6dbb2';ctx.font='bold 24px Arial';ctx.textAlign='center';ctx.fillText('✂',33,-23)}ctx.restore()}
-function drawForestEnemy(e,t){ctx.save();ctx.translate(e.x,e.y+Math.sin(t*6+e.phase)*2);const col=e.type==='dog'?'#9a6738':e.type==='bear'?'#514033':'#626f46';ctx.fillStyle='#0005';ctx.beginPath();ctx.ellipse(2,16,e.type==='bear'?28:23,13,0,0,Math.PI*2);ctx.fill();if(e.type==='dog'){ctx.fillStyle=col;ctx.beginPath();ctx.ellipse(0,0,23,13,Math.sin(e.phase)*.05,0,Math.PI*2);ctx.fill();ctx.beginPath();ctx.arc(15,-7,10,0,Math.PI*2);ctx.fill();ctx.fillStyle='#f4d78c';ctx.beginPath();ctx.arc(18,-9,2,0,Math.PI*2);ctx.fill();ctx.strokeStyle='#3f3426';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(-12,9);ctx.lineTo(-15,18);ctx.moveTo(10,9);ctx.lineTo(13,18);ctx.stroke()}else if(e.type==='bear'){ctx.fillStyle=col;ctx.beginPath();ctx.ellipse(0,2,27,20,0,0,Math.PI*2);ctx.fill();ctx.beginPath();ctx.arc(0,-15,16,0,Math.PI*2);ctx.arc(-12,-26,6,0,Math.PI*2);ctx.arc(12,-26,6,0,Math.PI*2);ctx.fill();ctx.fillStyle='#e5c493';ctx.beginPath();ctx.ellipse(0,-11,7,5,0,0,Math.PI*2);ctx.fill()}else{ctx.fillStyle='#14211d';rounded(ctx,-11,5,8,21,3);rounded(ctx,4,5,8,21,3);ctx.fillStyle=col;rounded(ctx,-17,-19,34,29,7);ctx.fillStyle='#d1ae86';ctx.beginPath();ctx.arc(0,-27,13,0,Math.PI*2);ctx.fill();ctx.fillStyle='#4c593e';rounded(ctx,-15,-39,30,11,5);ctx.fillStyle='#f1d381';ctx.fillRect(-4,-36,8,3);ctx.fillStyle='#ed705c';ctx.fillRect(-17,-7,34,4)}ctx.restore()}
-function drawForestFence(y,cut){ctx.fillStyle='#383f40';ctx.fillRect(0,y,W,14);ctx.fillRect(0,y+70,W,10);for(let x=0;x<W;x+=38){ctx.fillStyle='#45494a';ctx.fillRect(x,y-14,6,102)}ctx.strokeStyle='#d3d7cb';ctx.lineWidth=2;for(let k=0;k<4;k++){ctx.beginPath();ctx.moveTo(0,y+17+k*13);ctx.lineTo(W,y+17+k*13);ctx.stroke()}if(cut){ctx.fillStyle='#87b960';ctx.fillRect(W/2-48,y-15,96,99);ctx.strokeStyle='#ffe28c';ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(W/2-37,y+20);ctx.lineTo(W/2-12,y+43);ctx.lineTo(W/2+2,y+16);ctx.lineTo(W/2+17,y+44);ctx.lineTo(W/2+38,y+22);ctx.stroke()}}
-function drawForestFlags(x,y=275){ctx.fillStyle='#a9b9a5';ctx.fillRect(x,y,4,140);ctx.fillStyle='#d52c3b';ctx.fillRect(x+4,y+5,82,28);ctx.fillStyle='#218c59';ctx.fillRect(x+4,y+33,82,14);ctx.fillStyle='#fff';ctx.fillRect(x+4,y+5,12,42);ctx.fillStyle='#c72b3b';for(let yy=y+7;yy<y+49;yy+=8){ctx.fillRect(x+6,yy,3,4);ctx.fillRect(x+11,yy+3,3,3)}ctx.strokeStyle='#fff';ctx.lineWidth=2;ctx.strokeRect(x+4,y+5,82,42)}
-function drawForestCompass(x,y,px,py,targetX,targetY){ctx.save();ctx.translate(x,y);ctx.fillStyle='#11221be8';ctx.beginPath();ctx.arc(0,0,42,0,Math.PI*2);ctx.fill();ctx.strokeStyle='#e9e6d288';ctx.lineWidth=2;ctx.stroke();ctx.fillStyle='#f3f0dd';ctx.font='bold 10px Arial';ctx.textAlign='center';ctx.fillText('N',0,-28);ctx.fillText('S',0,33);ctx.fillText('W',-30,4);ctx.fillText('E',30,4);const a=Math.atan2(targetX-px,py-targetY);ctx.rotate(a);ctx.fillStyle='#ffca61';ctx.beginPath();ctx.moveTo(0,-25);ctx.lineTo(-8,8);ctx.lineTo(0,4);ctx.lineTo(8,8);ctx.closePath();ctx.fill();ctx.fillStyle='#67f2c3';ctx.beginPath();ctx.arc(0,0,4,0,Math.PI*2);ctx.fill();ctx.restore()}
-function showForestVictory(){running=false;gameEnded=true;const layer=document.getElementById('intro');layer.classList.remove('hidden');layer.innerHTML=`<section class="card"><div class="eyebrow">РІВЕНЬ 6 · ЛІС ЗАЛИШИВСЯ ПОЗАДУ</div><h1>Дріт перерізано.<br><em>Герой уже біжить.</em></h1><p>Після чотирьох маяків герой перерізав дріт і вибіг із лісу на сонячну дорогу.</p><div class="mission"><span>🌲 Ліс: пройдено</span><span>🥞 Сирники: тактичний запас</span><span>🚩 Прапор Білорусі: на місці</span></div><button id="forestReplayBtn">ПОВТОРИТИ РІВЕНЬ 6　↻</button><button id="forestToGermanyBtn" class="secondary">ПЕРЕЙТИ ДО РІВНЯ 7 · НІМЕЧЧИНА　→</button><button id="forestDoneBtn" class="secondary">ДО ГОЛОВНОГО МЕНЮ</button></section>`;document.getElementById('forestReplayBtn').onclick=startForestLevel;document.getElementById('forestToGermanyBtn').onclick=showGermanyTransition;document.getElementById('forestDoneBtn').onclick=()=>location.reload()}
-function showForestFail(){running=false;gameEnded=true;const layer=document.getElementById('intro');layer.classList.remove('hidden');layer.innerHTML=`<section class="card"><div class="eyebrow">РІВЕНЬ 6 · ЛІС</div><h1>Лісова команда.<br><em>Занадто близько.</em></h1><p>Прикордонники, собаки й ведмеді перехопили героя. Віднови запас сил і спробуй ще раз.</p><button id="forestRetryBtn">ПОВТОРИТИ РІВЕНЬ 6　↻</button></section>`;document.getElementById('forestRetryBtn').onclick=startForestLevel}
-function showGermanyTransition(){const layer=document.getElementById('intro');layer.classList.remove('hidden');layer.innerHTML=`<section class="card"><div class="eyebrow">РІВЕНЬ 7 · НІЧНЕ МІСТО · НІМЕЧЧИНА</div><h1>Новий кордон.<br><em>Челендж є. Цінників нема.</em></h1><p>Герой влаштовує TikTok-челендж: назбирати 12 пляшок і здати їх у Lidl Pfand. Насправді він дуже багатий і цінників не дивиться — це чисто контент. Колишня з Росії тим часом лишила дев’ять голосових; «кста, не зараз».</p><div class="mission"><span>🍾 12 пляшок × €0,25 = €3,00</span><span>♻️ Рюкзак: максимум 2 · Lidl Pfand</span><span>🛒 Обери 3 товари без цінників</span><span>💛 Знайди Жінку Непальця</span></div><button id="startGermanyBtn">ШУКАТИ PFAND　→</button><button id="germanyMenuBtn" class="secondary">ДО ГОЛОВНОГО МЕНЮ</button></section>`;document.getElementById('startGermanyBtn').onclick=startGermanyLevel;document.getElementById('germanyMenuBtn').onclick=()=>location.reload()}
-function startGermanyLevel(){focusGame();stage=8;gameEnded=false;running=true;paused=false;germany={worldW:2500,worldH:1900,x:150,y:1700,vx:0,vy:0,cameraX:0,cameraY:1100,carried:0,deposited:0,goal:12,banked:false,shopping:false,shopCount:0,shopProducts:[],meet:{x:2310,y:1690},machine:{x:1280,y:920},items:[],npcs:[],rivals:[],cars:[],scooters:[],bins:[],speechCooldown:0,fullHint:0};for(let i=0;i<12;i++){const x=180+Math.random()*2140,y=160+Math.random()*1600;germany.npcs.push({x,y,dx:Math.random()-.5,dy:Math.random()-.5,dropTimer:1+Math.random()*5,barkTimer:1+Math.random()*3,bark:'',barkLife:0})}for(const y of [250,800,1350,1700])for(let i=0;i<3;i++)germany.cars.push({axis:'h',x:Math.random()*germany.worldW,y:y+(i%2?34:-34),speed:90+Math.random()*110,dir:Math.random()<.5?1:-1,color:['#d4dbe0','#cf5349','#62a1a3','#e3c76d'][Math.floor(Math.random()*4)]});for(const x of [200,700,1200,1700,2200])for(let i=0;i<2;i++)germany.cars.push({axis:'v',x:x+(i%2?34:-34),y:Math.random()*germany.worldH,speed:85+Math.random()*105,dir:Math.random()<.5?1:-1,color:['#c4d1d1','#bb6552','#657eab','#d6a84d'][Math.floor(Math.random()*4)]});for(let i=0;i<12;i++)germany.scooters.push({x:Math.random()*germany.worldW,y:[250,800,1350,1700][i%4]+(i%2?56:-56),speed:60+Math.random()*70,dir:i%2?1:-1,color:['#5ae3d0','#f0be5d','#df7655'][i%3]});for(let i=0;i<20;i++)germany.bins.push({x:80+Math.random()*2340,y:100+Math.random()*1700});germany.items=[{x:390,y:1650,life:30},{x:550,y:1600,life:30},{x:810,y:1450,life:27},{x:1350,y:1150,life:30},{x:1780,y:1500,life:28},{x:2290,y:1200,life:30}];germany.shopProducts=[{x:1430,y:760,name:'КОЛОНКА',color:'#6fd9c8',got:false},{x:1500,y:805,name:'ПЛЮШ',color:'#f296bd',got:false},{x:1420,y:850,name:'КОНСОЛЬ',color:'#95a8ed',got:false},{x:1515,y:900,name:'ФУТБОЛКА',color:'#f0c46a',got:false},{x:1390,y:915,name:'ТІКТОК-ШТАТИВ',color:'#9add77',got:false}];germany.rivals=Array.from({length:3},(_,i)=>({x:220+Math.random()*2050,y:240+Math.random()*1550,speed:76+Math.random()*32,target:null,kind:i%3}));keys.clear();boostPressed=false;document.getElementById('game').classList.remove('arcade-mode','cafe-mode','training-mode','forest-mode');document.getElementById('game').classList.add('germany-mode');document.querySelector('.mapbox').style.display='block';document.querySelector('.maplabel').textContent='ЖОВТИЙ МАРКЕР = PFAND';document.querySelector('.speed').style.display='none';document.querySelector('.touch-action').style.display='none';document.getElementById('vrDashTouch').style.display='none';setHint('РУХ <b>WASD / СТРІЛКИ</b>　 РУКИ ВМІЩУЮТЬ ЛИШЕ <b>2 ПЛЯШКИ</b>');document.getElementById('delivered').parentElement.firstChild.textContent='🍾 PFAND ';document.getElementById('delivered').textContent='0 / 12';document.getElementById('timer').textContent='€0.00';document.getElementById('objectiveTitle').textContent='ЗБЕРИ 12 ПЛЯШОК';document.getElementById('objectiveText').textContent='Місто велике й живе: стеж за машинами, перехожими та самокатчиками. Здавай пляшки в Lidl Pfand.';document.getElementById('intro').classList.add('hidden');document.getElementById('pause').classList.remove('show');audioStart();showToast('12 ПЛЯШОК = €3 · НОСИ НЕ БІЛЬШЕ ДВОХ');last=performance.now();scheduleLoop()}
-function germanBark(n){const lines=['Scheiß Ausländer!','Geh arbeiten!','Geh zurück in dein Land!','Verpiss dich!','Fluggegecheimen!','Fahr doch zurück in die Ukraine!','Deutschland den Deutschen!','Ausländer raus!'];n.bark=lines[Math.floor(Math.random()*lines.length)];n.barkLife=2.7;germany.speechCooldown=4.6;if('speechSynthesis'in window&&'SpeechSynthesisUtterance'in window){try{window.speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(n.bark);u.lang='de-DE';u.rate=.9;u.pitch=.82;window.speechSynthesis.speak(u)}catch(e){}}}
-function updateGermany(dt,t){const {x:dx,y:dy}=movementAxes();germany.vx+=(dx*365-germany.vx)*Math.min(1,dt*10);germany.vy+=(dy*365-germany.vy)*Math.min(1,dt*10);germany.x=clamp(germany.x+germany.vx*dt,36,germany.worldW-36);germany.y=clamp(germany.y+germany.vy*dt,120,germany.worldH-40);germany.cameraX=clamp(germany.x-W/2,0,germany.worldW-W);germany.cameraY=clamp(germany.y-H/2,0,germany.worldH-H);germany.speechCooldown=Math.max(0,germany.speechCooldown-dt);germany.fullHint=Math.max(0,germany.fullHint-dt);for(const n of germany.npcs){n.x=clamp(n.x+n.dx*58*dt,45,germany.worldW-45);n.y=clamp(n.y+n.dy*52*dt,120,germany.worldH-45);if(n.x<60||n.x>germany.worldW-60)n.dx*=-1;if(n.y<130||n.y>germany.worldH-60)n.dy*=-1;if(Math.random()<dt*.2){n.dx+=(Math.random()-.5)*.9;n.dy+=(Math.random()-.5)*.9;const d=Math.hypot(n.dx,n.dy)||1;n.dx/=d;n.dy/=d}n.dropTimer-=dt;n.barkLife=Math.max(0,n.barkLife-dt);n.barkTimer=Math.max(0,n.barkTimer-dt);if(n.dropTimer<=0&&germany.items.length<8){const a=Math.random()*Math.PI*2;germany.items.push({x:clamp(n.x+Math.cos(a)*35,45,germany.worldW-45),y:clamp(n.y+Math.sin(a)*35,130,germany.worldH-45),life:24+Math.random()*8});n.dropTimer=8+Math.random()*5}if(Math.hypot(germany.x-n.x,germany.y-n.y)<145&&n.barkTimer<=0&&germany.speechCooldown<=0){germanBark(n);n.barkTimer=5+Math.random()*2}}for(const c of germany.cars){if(c.axis==='h'){c.x+=c.speed*c.dir*dt;if(c.dir>0&&c.x>germany.worldW+100)c.x=-100;if(c.dir<0&&c.x<-100)c.x=germany.worldW+100}else{c.y+=c.speed*c.dir*dt;if(c.dir>0&&c.y>germany.worldH+100)c.y=-100;if(c.dir<0&&c.y<-100)c.y=germany.worldH+100}if(Math.abs(germany.x-c.x)<34&&Math.abs(germany.y-c.y)<27){const d=Math.hypot(germany.x-c.x,germany.y-c.y)||1;germany.x=clamp(germany.x+(germany.x-c.x)/d*60,36,germany.worldW-36);germany.y=clamp(germany.y+(germany.y-c.y)/d*60,120,germany.worldH-40);showToast('УВАГА, МАШИНА!')}}for(const c of germany.scooters){c.x+=c.speed*c.dir*dt;if(c.x>germany.worldW+70)c.x=-70;if(c.x<-70)c.x=germany.worldW+70;if(Math.hypot(germany.x-c.x,germany.y-c.y)<28){germany.x=clamp(germany.x-c.dir*32,36,germany.worldW-36);showToast('САМОКАТЧИК ПРОМЧАВ ПОВЗ!')}}for(let i=germany.items.length-1;i>=0;i--){const b=germany.items[i];b.life-=dt;if(b.life<=0){germany.items.splice(i,1);continue}if(germany.carried<2&&Math.hypot(germany.x-b.x,germany.y-b.y)<32){germany.items.splice(i,1);germany.carried++;tone(680,.07,'sine',.035,120);showToast('ПЛЯШКА В РЮКЗАКУ · €0,25')}}for(const r of germany.rivals){let target=null,dist=1e9;for(const b of germany.items){const d=Math.hypot(r.x-b.x,r.y-b.y);if(d<dist){dist=d;target=b}}r.target=target;if(target){const dx=target.x-r.x,dy=target.y-r.y,d=Math.hypot(dx,dy)||1;r.x+=dx/d*r.speed*dt;r.y+=dy/d*r.speed*dt;if(d<22){const i=germany.items.indexOf(target);if(i>=0){germany.items.splice(i,1);r.lastStole=1.4}}}else{r.lastStole=Math.max(0,(r.lastStole||0)-dt);r.x=clamp(r.x+Math.sin(t+r.x)*15*dt,35,germany.worldW-35)}}if(germany.carried>0&&Math.hypot(germany.x-germany.machine.x,germany.y-germany.machine.y)<76){const amount=germany.carried,deposit=Math.min(amount,germany.goal-germany.deposited);germany.deposited+=deposit;germany.carried=0;score+=deposit*25;document.getElementById('score').textContent=String(score).padStart(4,'0');document.getElementById('delivered').textContent=`${germany.deposited} / ${germany.goal}`;document.getElementById('timer').textContent=`€${(germany.deposited*.25).toFixed(2)}`;tone(740,.12,'sine',.05,200);showToast(`LIDL PFAND: +€${(deposit*.25).toFixed(2)}`);if(germany.deposited>=germany.goal){germany.banked=true;germany.shopping=true;document.getElementById('objectiveTitle').textContent='LIDL · ОБЕРИ 3 РЕЧІ';document.getElementById('objectiveText').textContent='У героя немає бюджету — просто обери будь-які три товари. Цінників тут немає.';showToast('PFAND-ЧЕЛЕНДЖ ВИКОНАНО · ЧАС ЗАКУПІВ')}else{document.getElementById('objectiveTitle').textContent=`ЗБЕРИ ЩЕ ${germany.goal-germany.deposited} ПЛЯШОК`;document.getElementById('objectiveText').textContent='Збирай не більше двох за раз і повертайся до Lidl Pfand.'}}if(germany.shopping){for(const item of germany.shopProducts){if(!item.got&&Math.hypot(germany.x-item.x,germany.y-item.y)<42){item.got=true;germany.shopCount++;score+=500;showToast(`ВІЗЬМЕМО · ${item.name} · РАХУЄМО НЕ ЦІННИКИ (${germany.shopCount}/3)`);if(germany.shopCount>=3){germany.shopping=false;document.getElementById('objectiveTitle').textContent='ЗУСТРІЧ ІЗ ЖІНКОЮ НЕПАЛЬЦЯ';document.getElementById('objectiveText').textContent='Вирушай до східного скверу. TikTok уже записав, покупки зроблені.';chime()}}}}if(germany.banked&&!germany.shopping&&Math.hypot(germany.x-germany.meet.x,germany.y-germany.meet.y)<55){showGermanyVictory();return}document.getElementById('delivered').textContent=`${germany.deposited} / 12 · ${germany.carried}/2`;if(toastTimer>0){toastTimer-=dt;if(toastTimer<=0)document.getElementById('toast').classList.remove('show')}}
-function drawGermany(t){ctx.clearRect(0,0,W,H);const cX=germany.cameraX,cY=germany.cameraY;ctx.save();ctx.translate(-cX,-cY);const bg=ctx.createLinearGradient(0,cY,0,cY+H);bg.addColorStop(0,'#a8c8d1');bg.addColorStop(.55,'#c4d6c8');bg.addColorStop(1,'#d5d4be');ctx.fillStyle=bg;ctx.fillRect(cX,cY,W,H);const roadsXg=[200,700,1200,1700,2200],roadsYg=[250,800,1350,1700];for(const y of roadsYg){ctx.fillStyle='#8b928e';ctx.fillRect(0,y-56,germany.worldW,112);ctx.fillStyle='#626b69';ctx.fillRect(0,y-42,germany.worldW,84);ctx.strokeStyle='#c5b887';ctx.lineWidth=3;ctx.setLineDash([26,22]);ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(germany.worldW,y);ctx.stroke();ctx.setLineDash([])}for(const x of roadsXg){ctx.fillStyle='#8b928e';ctx.fillRect(x-56,0,112,germany.worldH);ctx.fillStyle='#626b69';ctx.fillRect(x-42,0,84,germany.worldH);ctx.strokeStyle='#c5b887';ctx.lineWidth=3;ctx.setLineDash([26,22]);ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,germany.worldH);ctx.stroke();ctx.setLineDash([])}for(let row=0;row<4;row++)for(let col=0;col<5;col++){const bx=50+col*500+(row%2)*30,by=45+row*480;if(bx>germany.worldW-320)continue;ctx.fillStyle='#89958f';rounded(ctx,bx,by,330,175,12);ctx.fillStyle=['#c6b99f','#b8c1b5','#d0c4ad','#b6c4c2'][((row+col)%4)];rounded(ctx,bx+9,by+10,312,156,9);for(let wx=bx+24;wx<bx+305;wx+=42)for(let wy=by+27;wy<by+145;wy+=35){ctx.fillStyle=(Math.floor(wx+wy)/7)%2?'#9fd6ed':'#ffe3a0';ctx.fillRect(wx,wy,18,18)}ctx.fillStyle='#262e3a';ctx.fillRect(bx+18,by+142,294,12)}for(const y of roadsYg)for(let x=0;x<germany.worldW;x+=190){ctx.fillStyle='#eee5cf';ctx.fillRect(x,y-55,26,8);ctx.fillRect(x,y+47,26,8)}for(const b of germany.bins)drawGermanyBin(b.x,b.y);drawGermanyFlags(t);for(const c of germany.cars)drawGermanyCar(c);for(const c of germany.scooters)drawGermanyScooter(c,t);for(const b of germany.items)drawGermanyBottle(b.x,b.y,t);for(const n of germany.npcs)drawGermanyNpc(n.x,n.y,t,n.bark,n.barkLife);for(const r of germany.rivals)drawGermanyRival(r,t);drawPfandMachine(germany.machine.x,germany.machine.y);ctx.save();ctx.fillStyle='#ffe15b';ctx.font='900 16px Arial';ctx.textAlign='center';ctx.shadowColor='#ffcf45';ctx.shadowBlur=9;ctx.fillText('LIDL PFAND ↓',germany.machine.x,germany.machine.y-88+Math.sin(t*3)*3);ctx.restore();if(germany.banked&&!germany.shopping)drawGermanyWoman(germany.meet.x,germany.meet.y,t);if(germany.banked){drawGermanyStore(1430,835,t);for(const item of germany.shopProducts)if(!item.got)drawGermanyProduct(item.x,item.y,item.color,item.name,t)}drawGermanyHero(germany.x,germany.y,t);ctx.restore();ctx.fillStyle='#f5e8cc';ctx.font='bold 16px Arial,sans-serif';ctx.textAlign='center';ctx.fillStyle='#101923dd';rounded(ctx,W/2-155,H-78,310,39,10);ctx.fillStyle='#ffd479';ctx.font='bold 14px Arial';ctx.textAlign='center';ctx.fillText(`${germany.banked?(germany.shopping?`LIDL · ${germany.shopCount}/3 БЕЗ ЦІННИКІВ`:'ФІНАЛЬНИЙ МАРШРУТ'):'€'+(germany.deposited*.25).toFixed(2)+' / €3.00'} · РАЙОН ${Math.floor(germany.x/500)+1}`,W/2,H-53);if(germany.carried===2){ctx.fillStyle='#fff1b2';ctx.font='bold 12px Arial';ctx.fillText('РЮКЗАК ПОВНИЙ · ДО LIDL PFAND',W/2,H-91)}}
-function drawGermanyStore(x,y,t){ctx.save();ctx.fillStyle='#0008';ctx.beginPath();ctx.ellipse(x,y+44,103,20,0,0,Math.PI*2);ctx.fill();ctx.fillStyle='#344452';rounded(ctx,x-93,y-70,186,112,10);ctx.fillStyle='#dc252c';rounded(ctx,x-88,y-65,176,31,7);ctx.fillStyle='#fff';ctx.font='900 20px Arial';ctx.textAlign='center';ctx.fillText('LIDL',x,y-43);ctx.fillStyle='#f2d668';ctx.beginPath();ctx.arc(x,y-52,12+Math.sin(t*5)*1.2,0,Math.PI*2);ctx.fill();ctx.fillStyle='#a4cdd2';rounded(ctx,x-74,y-25,148,57,5);ctx.fillStyle='#26323b';ctx.fillRect(x-8,y-24,41,56);ctx.fillStyle='#e9dcb9';ctx.font='bold 10px Arial';ctx.fillText('KEINE PREISSCHILDER',x,y+26);ctx.restore()}function drawGermanyProduct(x,y,color,name,t){ctx.save();ctx.translate(x,y+Math.sin(t*4+x)*3);ctx.shadowColor=color;ctx.shadowBlur=12;ctx.fillStyle=color;rounded(ctx,-15,-16,30,31,6);ctx.shadowBlur=0;ctx.fillStyle='#1b2530';ctx.font='bold 8px Arial';ctx.textAlign='center';ctx.fillText(name,0,23);ctx.restore()}function drawGermanyBin(x,y){ctx.fillStyle='#0b131b';rounded(ctx,x-20,y-18,40,37,6);ctx.fillStyle='#377c6d';rounded(ctx,x-16,y-13,32,29,4);ctx.fillStyle='#a8c7b7';ctx.fillRect(x-23,y-20,46,5);ctx.fillStyle='#e7ca7c';ctx.fillRect(x-8,y-5,16,9);ctx.fillStyle='#17232b';ctx.font='bold 7px Arial';ctx.textAlign='center';ctx.fillText('PFAND',x,y+1)}
-function drawGermanyWoman(x,y,t){ctx.save();ctx.translate(x,y+Math.sin(t*3)*2);ctx.scale(.94,.94);ctx.strokeStyle='rgba(255,207,104,.75)';ctx.lineWidth=4;ctx.beginPath();ctx.arc(0,0,34+Math.sin(t*4)*3,0,Math.PI*2);ctx.stroke();ctx.fillStyle='#0009';ctx.beginPath();ctx.ellipse(1,19,23,10,0,0,Math.PI*2);ctx.fill();ctx.fillStyle='#202733';rounded(ctx,-14,3,11,23,4);rounded(ctx,4,3,11,23,4);ctx.fillStyle='#9b5f92';rounded(ctx,-19,-29,38,34,9);ctx.fillStyle='#d6a67e';ctx.beginPath();ctx.arc(0,-39,14,0,Math.PI*2);ctx.fill();ctx.fillStyle='#251e24';ctx.beginPath();ctx.arc(-1,-45,15,Math.PI,Math.PI*2);ctx.fill();ctx.beginPath();ctx.ellipse(13,-35,7,12,.2,0,Math.PI*2);ctx.fill();ctx.fillStyle='#ffe9aa';ctx.font='bold 13px Arial';ctx.textAlign='center';ctx.fillText('ЖІНКА НЕПАЛЬЦЯ',0,-67);ctx.fillStyle='#ff7298';ctx.font='24px Arial';ctx.fillText('♥',26,-48);ctx.restore()}
-function drawGermanyBottle(x,y,t=0){ctx.save();ctx.shadowColor='#ffe28a';ctx.shadowBlur=12;ctx.fillStyle='#0007';ctx.beginPath();ctx.ellipse(x+2,y+9,12,5,0,0,Math.PI*2);ctx.fill();ctx.fillStyle='#79d6a0';rounded(ctx,x-7,y-15,14,26,4);ctx.fillStyle='#c8edce';ctx.fillRect(x-4,y-21,8,8);ctx.fillStyle='#f1d66d';ctx.fillRect(x-3,y-10,6,10);ctx.restore()}
-function drawPfandMachine(x,y){ctx.save();ctx.fillStyle='rgba(8,16,20,.7)';ctx.beginPath();ctx.ellipse(x,y+55,62,17,0,0,Math.PI*2);ctx.fill();ctx.fillStyle='#151d23';rounded(ctx,x-49,y-72,98,140,12);ctx.fillStyle='#e1262e';rounded(ctx,x-42,y-64,84,122,8);ctx.fillStyle='#ffdc36';ctx.beginPath();ctx.arc(x,y-43,17,0,Math.PI*2);ctx.fill();ctx.fillStyle='#d52b32';ctx.beginPath();ctx.arc(x,y-43,10,0,Math.PI*2);ctx.fill();ctx.fillStyle='#fff';ctx.font='900 14px Arial';ctx.textAlign='center';ctx.fillText('LIDL',x,y-12);ctx.fillStyle='#133e35';rounded(ctx,x-34,y+1,68,39,5);ctx.fillStyle='#9effca';ctx.font='900 10px Arial';ctx.fillText('PFAND',x,y+17);ctx.fillText('AUTOMAT',x,y+29);ctx.fillStyle='#ffe46b';ctx.fillRect(x-17,y+48,34,6);ctx.restore()}
-function drawGermanyNpc(x,y,t,bark='',barkLife=0){ctx.save();ctx.translate(x,y+Math.sin(t*3+x)*2);ctx.scale(.94,.94);ctx.fillStyle='#0008';ctx.beginPath();ctx.ellipse(0,18,20,10,0,0,Math.PI*2);ctx.fill();ctx.fillStyle='#192331';rounded(ctx,-14,-1,12,20,4);rounded(ctx,2,-1,12,20,4);ctx.fillStyle=['#647a68','#c78e52','#647895','#a46d71'][Math.floor(x/280)%4];rounded(ctx,-18,-32,36,34,9);ctx.fillStyle='#d6b08a';ctx.beginPath();ctx.arc(0,-42,14,0,Math.PI*2);ctx.fill();ctx.fillStyle='#403830';ctx.beginPath();ctx.arc(0,-47,14,Math.PI,Math.PI*2);ctx.fill();ctx.restore();if(bark&&barkLife>0)drawGermanSpeechBubble(x,y-61,bark)}
-function drawGermanSpeechBubble(x,y,text){ctx.save();ctx.font='bold 13px Arial,sans-serif';const max=300,words=text.split(' '),lines=[];let line='';for(const w of words){const next=line?line+' '+w:w;if(ctx.measureText(next).width>max&&line){lines.push(line);line=w}else line=next}if(line)lines.push(line);const width=Math.min(max,Math.max(100,...lines.map(l=>ctx.measureText(l).width))+22),height=lines.length*17+16,left=clamp(x-width/2,8,W-width-8),top=clamp(y-height,105,H-height-8);ctx.fillStyle='#fff8e8';ctx.strokeStyle='#252a32';ctx.lineWidth=2;rounded(ctx,left,top,width,height,9);ctx.stroke();ctx.fillStyle='#fff8e8';ctx.beginPath();ctx.moveTo(clamp(x,left+12,left+width-12),top+height-1);ctx.lineTo(x,top+height+9);ctx.lineTo(clamp(x+17,left+12,left+width-12),top+height-1);ctx.fill();ctx.fillStyle='#222630';ctx.textAlign='center';ctx.font='bold 13px Arial,sans-serif';lines.forEach((l,i)=>ctx.fillText(l,left+width/2,top+20+i*17));ctx.restore()}
-function drawGermanyCar(c){ctx.save();ctx.translate(c.x,c.y);if(c.axis==='v')ctx.rotate(Math.PI/2);ctx.fillStyle='#0008';ctx.beginPath();ctx.ellipse(3,5,31,16,0,0,Math.PI*2);ctx.fill();ctx.fillStyle=c.color;rounded(ctx,-31,-15,62,30,9);ctx.fillStyle='#b7d9df';rounded(ctx,-11,-11,22,22,5);ctx.fillStyle='#f8edc2';ctx.fillRect(-29,-10,5,7);ctx.fillRect(24,-10,5,7);ctx.fillStyle='#242c36';ctx.fillRect(-20,-18,12,4);ctx.fillRect(10,-18,12,4);ctx.fillRect(-20,14,12,4);ctx.fillRect(10,14,12,4);ctx.restore()}
-function drawGermanyScooter(c,t){ctx.save();ctx.translate(c.x,c.y+Math.sin(t*8+c.x)*2);if(c.dir<0)ctx.scale(-1,1);ctx.strokeStyle='#111820';ctx.lineWidth=3;ctx.beginPath();ctx.arc(-11,5,5,0,Math.PI*2);ctx.arc(13,5,5,0,Math.PI*2);ctx.stroke();ctx.strokeStyle=c.color;ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(-10,2);ctx.lineTo(11,2);ctx.lineTo(7,-16);ctx.lineTo(15,-17);ctx.stroke();ctx.fillStyle='#25313a';rounded(ctx,-6,-36,14,23,5);ctx.fillStyle=c.color;rounded(ctx,-10,-33,20,17,5);ctx.fillStyle='#d9ae7d';ctx.beginPath();ctx.arc(1,-45,8,0,Math.PI*2);ctx.fill();ctx.fillStyle='#3a3029';ctx.beginPath();ctx.arc(0,-48,8,Math.PI,Math.PI*2);ctx.fill();ctx.strokeStyle='#303941';ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(-4,-13);ctx.lineTo(-8,-3);ctx.moveTo(6,-13);ctx.lineTo(10,-2);ctx.stroke();ctx.restore()}function drawGermanyRival(r,t){ctx.save();ctx.translate(r.x,r.y+Math.sin(t*6+r.x)*2);ctx.scale(.94,.94);ctx.fillStyle='#0008';ctx.beginPath();ctx.ellipse(0,17,22,10,0,0,Math.PI*2);ctx.fill();ctx.fillStyle='#232b2a';rounded(ctx,-14,3,11,21,4);rounded(ctx,4,3,11,21,4);ctx.fillStyle='#6a6655';rounded(ctx,-19,-31,38,37,10);ctx.fillStyle='#b79672';ctx.beginPath();ctx.arc(0,-40,14,0,Math.PI*2);ctx.fill();ctx.fillStyle='#31362f';ctx.beginPath();ctx.arc(0,-44,15,Math.PI,Math.PI*2);ctx.fill();ctx.fillStyle='#7a513c';rounded(ctx,13,-6,14,20,4);ctx.fillStyle='#b7804b';rounded(ctx,16,-4,8,13,3);if(r.lastStole>0){ctx.fillStyle='#f5e9c5';ctx.font='bold 11px Arial';ctx.textAlign='center';ctx.fillText('МОЯ!',0,-62)}ctx.restore()}
-function drawGermanyHero(x,y,t){ctx.save();ctx.translate(x,y+Math.sin(t*10)*1.3);ctx.scale(.94,.94);ctx.fillStyle='#0008';ctx.beginPath();ctx.ellipse(2,17,23,11,0,0,Math.PI*2);ctx.fill();ctx.fillStyle='#1b2733';rounded(ctx,-14,3,11,23,4);rounded(ctx,4,3,11,23,4);ctx.fillStyle='#d2aa7d';rounded(ctx,-17,-23,34,31,9);ctx.fillStyle='#314e61';rounded(ctx,-17,-7,34,22,8);ctx.fillStyle='#ad7545';rounded(ctx,-22,0,44,13,6);ctx.fillStyle='#e3bd71';ctx.fillRect(-4,3,8,8);ctx.fillStyle='#e1b28b';ctx.beginPath();ctx.arc(0,-32,14,0,Math.PI*2);ctx.fill();ctx.fillStyle='#48382c';ctx.beginPath();ctx.arc(0,-36,14,Math.PI,Math.PI*2);ctx.fill();ctx.restore()}
-function drawGermanyFlags(t){const flags=[{x:130,y:120,type:'de'},{x:660,y:145,type:'rainbow'},{x:1220,y:230,type:'ua'},{x:1740,y:960,type:'gear'},{x:2220,y:320,type:'de'}];for(const f of flags){ctx.fillStyle='#7b817c';ctx.fillRect(f.x,f.y,3,65);if(f.type==='de'){ctx.fillStyle='#171a1b';ctx.fillRect(f.x+3,f.y,50,10);ctx.fillStyle='#d52c38';ctx.fillRect(f.x+3,f.y+10,50,10);ctx.fillStyle='#f0c344';ctx.fillRect(f.x+3,f.y+20,50,10)}else if(f.type==='ua'){ctx.fillStyle='#2476cf';ctx.fillRect(f.x+3,f.y,50,15);ctx.fillStyle='#f1d14a';ctx.fillRect(f.x+3,f.y+15,50,15)}else if(f.type==='rainbow'){const cols=['#ed4c54','#ed9144','#e5cf4d','#4dbb74','#3b8dd2','#9660bd'];cols.forEach((c,i)=>{ctx.fillStyle=c;ctx.fillRect(f.x+3,f.y+i*5,50,5)})}else{const cx=f.x+29,cy=f.y+15;ctx.fillStyle='#d82731';ctx.fillRect(f.x+3,f.y,56,32);ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(cx,cy,12,0,Math.PI*2);ctx.fill();ctx.save();ctx.translate(cx,cy);ctx.fillStyle='#53615e';for(let k=0;k<8;k++){ctx.save();ctx.rotate(k*Math.PI/4);ctx.fillRect(-2.5,-11,5,7);ctx.restore()}ctx.beginPath();ctx.arc(0,0,8,0,Math.PI*2);ctx.fill();ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(0,0,3,0,Math.PI*2);ctx.fill();ctx.restore()}ctx.fillStyle='#fff';ctx.strokeStyle='#3d4544';ctx.lineWidth=1;ctx.strokeRect(f.x+3,f.y,56,32)}}
-function showGermanyVictory(){running=false;gameEnded=true;const layer=document.getElementById('intro');layer.classList.remove('hidden');layer.innerHTML=`<section class="card"><div class="eyebrow">ФІНАЛ · НІМЕЧЧИНА · PFAND ЗДАНО</div><h1>Довгий маршрут.<br><em>Щаслива зустріч.</em></h1><p>Герой знаходить Жінку Непальця, трохи ніяковіє й зізнається їй у коханні. Вона усміхається та бере його за руку. Автомат Pfand лишається далеко позаду — нарешті це не його головна проблема.</p><div class="mission"><span>🍾 Пляшки: здано</span><span>💛 Зізнання: зроблено</span><span>🏁 Історія: завершена</span></div><button id="germanyReplayBtn">ПОВТОРИТИ РІВЕНЬ 7　↻</button><button id="germanyDoneBtn" class="secondary">У ГОЛОВНЕ МЕНЮ</button></section>`;document.getElementById('germanyReplayBtn').onclick=startGermanyLevel;document.getElementById('germanyDoneBtn').onclick=()=>location.reload()}
-function showVrFail(){running=false;gameEnded=true;const layer=document.getElementById('intro');layer.classList.remove('hidden');layer.innerHTML=`<section class="card"><div class="eyebrow">VR-ЦЕХ · ПОВТОРНА СПРОБА</div><h1>Сигнал зник.<br><em>Шолом цілий.</em></h1><p>Цементний блок збив героя з ніг. Перепочинь і спробуй знешкодити завод ще раз.</p><button id="retryVrBtn">ПОВТОРИТИ РІВЕНЬ 5　↻</button></section>`;document.getElementById('retryVrBtn').onclick=showVrCutscene}
-let captureStartedAt=0;function showChaseCapture(){if(gameEnded)return;gameEnded=true;running=false;stage=4;captureStartedAt=performance.now();document.getElementById('intro').classList.add('hidden');chime();requestAnimationFrame(captureLoop)}function captureLoop(now){if(!gameEnded||stage!==4)return;const sec=(now-captureStartedAt)/1000;drawCaptureCutscene(sec);if(sec<7.5)requestAnimationFrame(captureLoop);else showCaptureResult()}function drawCaptureCutscene(sec){ctx.clearRect(0,0,W,H);ctx.fillStyle='#111a2b';ctx.fillRect(0,0,W,H);ctx.fillStyle='#18243a';for(let i=0;i<9;i++){const x=i*158-22,h=170+(i*47%180);ctx.fillRect(x,70,130,h);ctx.fillStyle='#e7bd64';for(let wy=92;wy<70+h-20;wy+=38)for(let wx=x+15;wx<x+120;wx+=31){ctx.fillRect(wx,wy,9,13)}ctx.fillStyle='#18243a'}ctx.fillStyle='#414c57';ctx.fillRect(0,430,W,250);ctx.fillStyle='#d7c982';ctx.fillRect(0,424,W,7);ctx.fillRect(0,680,W,7);ctx.fillStyle='#d9d4b2';for(let x=45;x<W;x+=170)ctx.fillRect(x,546,82,7);for(const [lx,ly] of [[130,300],[1140,310]]){ctx.fillStyle='#202b34';ctx.fillRect(lx-4,ly,8,155);const glow=ctx.createRadialGradient(lx,ly+15,5,lx,ly+15,220);glow.addColorStop(0,'rgba(255,215,130,.26)');glow.addColorStop(1,'rgba(255,215,130,0)');ctx.fillStyle=glow;ctx.beginPath();ctx.arc(lx,ly+15,220,0,Math.PI*2);ctx.fill()}
- const vanX=sec<1.25?1300-370*Math.min(1,sec/1.25):sec<4.8?930:930+Math.min(520,(sec-4.8)*260),vanY=365;ctx.save();ctx.translate(vanX,vanY);if(sec>=4.8)ctx.rotate(Math.min(Math.PI/2,(sec-4.8)*2.2));ctx.fillStyle='#0008';rounded(ctx,-45,-72,90,153,18);ctx.fillStyle='#465142';rounded(ctx,-42,-75,84,148,18);ctx.fillStyle='#63704f';rounded(ctx,-35,-67,70,125,12);ctx.fillStyle='#17232a';rounded(ctx,-28,-51,56,38,8);ctx.fillStyle='#a9d7ce';rounded(ctx,-23,-46,46,26,5);ctx.fillStyle='#29332e';rounded(ctx,-29,2,58,43,9);ctx.fillStyle='#d7dfc9';ctx.font='900 18px Arial,sans-serif';ctx.textAlign='center';ctx.fillText('ТЦК',0,28);ctx.fillStyle='#f7dc92';ctx.fillRect(-32,-72,15,5);ctx.fillRect(17,-72,15,5);ctx.fillStyle='#141b20';rounded(ctx,-47,-48,8,33,3);rounded(ctx,39,-48,8,33,3);rounded(ctx,-47,29,8,34,3);rounded(ctx,39,29,8,34,3);if(sec>1&&sec<4.8){ctx.fillStyle='#18242a';ctx.fillRect(-31,68,62,8);ctx.fillStyle='#a6afa0';ctx.fillRect(-30,75,60,3)}ctx.restore();
- // The scooter skids and stays behind while the rider falls, then officers move the rider into the van.
- const fall=Math.min(1,sec/.9),approach=Math.max(0,Math.min(1,(sec-1.6)/2.9)),riderX=sec<1.6?565:565+approach*285,riderY=440+Math.sin(Math.min(sec,1)*Math.PI)*10;drawCineScooter(470,465,sec);if(sec<4.45){drawCinePerson(riderX,riderY,sec<1.2?fall*1.25:(sec<2?Math.max(0,1.25*(1-(sec-1.2)/.8)):0),'#df7647','#f0b844',sec<1.2);if(sec>1.5&&sec<4.5){const q=Math.min(1,(sec-1.5)/2.7);drawCineOfficer(560+q*220,396,'#7f8764',sec);drawCineOfficer(555+q*220,487,'#6d795d',sec+1)}}
- if(sec<1.35){ctx.fillStyle='#ffe286';ctx.font='900 30px Arial,sans-serif';ctx.textAlign='center';ctx.fillText('ОЙ!',550,365)}ctx.fillStyle='#fff';ctx.font='bold 22px Arial,sans-serif';ctx.textAlign='left';const caption=sec<1.2?'Самокат ковзнув на мокрій дорозі…':sec<3.4?'Бус зупинився. Двері відчинилися.':sec<5?'Героя посадили всередину…':'Бус поїхав. Самокат залишився.';ctx.fillText(caption,42,75);ctx.fillStyle='#fff';ctx.font='bold 16px Arial,sans-serif';ctx.fillText('РІВЕНЬ 3 · НІЧНА ПОГОНЯ',42,108)}function drawCineScooter(x,y,t){ctx.save();ctx.translate(x,y);ctx.rotate(-.22+Math.sin(Math.min(t,1)*5)*.06);ctx.fillStyle='#0007';ctx.beginPath();ctx.ellipse(0,4,17,59,0,0,Math.PI*2);ctx.fill();ctx.fillStyle='#111a22';rounded(ctx,-10,-55,20,20,7);rounded(ctx,-10,35,20,20,7);ctx.fillStyle='#b5c3c7';ctx.beginPath();ctx.arc(0,-45,5,0,Math.PI*2);ctx.arc(0,45,5,0,Math.PI*2);ctx.fill();ctx.fillStyle='#35d6c0';rounded(ctx,-9,-39,18,78,7);ctx.fillStyle='#f5d576';rounded(ctx,-27,-52,54,8,4);ctx.restore()}function drawCinePerson(x,y,angle,shirt,helmet,fallen){ctx.save();ctx.translate(x,y);ctx.rotate(angle);ctx.fillStyle='#0007';ctx.beginPath();ctx.ellipse(2,9,24,35,0,0,Math.PI*2);ctx.fill();ctx.fillStyle='#1a2830';rounded(ctx,-11,8,9,20,4);rounded(ctx,3,8,9,20,4);ctx.fillStyle=shirt;rounded(ctx,-15,-8,30,26,9);ctx.strokeStyle=shirt;ctx.lineWidth=7;ctx.lineCap='round';ctx.beginPath();ctx.moveTo(-11,-1);ctx.lineTo(-22,-25);ctx.moveTo(11,-1);ctx.lineTo(22,-25);ctx.stroke();ctx.fillStyle='#f0c18d';ctx.beginPath();ctx.arc(0,-19,13,0,Math.PI*2);ctx.fill();ctx.fillStyle=helmet;ctx.beginPath();ctx.arc(0,-21,14,Math.PI,Math.PI*2);ctx.fill();if(fallen){ctx.fillStyle='#ffe78c';ctx.beginPath();ctx.arc(0,-45,6,0,Math.PI*2);ctx.fill()}ctx.restore()}function drawCineOfficer(x,y,uniform,t){ctx.save();ctx.translate(x,y);ctx.rotate(-Math.PI/2);ctx.fillStyle='#0006';ctx.beginPath();ctx.ellipse(2,8,17,24,0,0,Math.PI*2);ctx.fill();ctx.fillStyle='#1a2427';rounded(ctx,-8,6,7,17,3);rounded(ctx,2,6,7,17,3);ctx.fillStyle=uniform;rounded(ctx,-13,-12,26,23,8);ctx.fillStyle='#394332';ctx.beginPath();ctx.arc(0,-18,11,0,Math.PI*2);ctx.fill();ctx.fillStyle='#28352d';rounded(ctx,-12,-25,24,7,3);ctx.fillStyle='#dfbd6a';ctx.fillRect(-3,-22,6,3);ctx.restore()}function showCaptureResult(){const layer=document.getElementById('intro');layer.classList.remove('hidden');layer.innerHTML=`<section class="card"><div class="eyebrow">РІВЕНЬ 3 · ФІНАЛ ПОГОНІ</div><h1>От халепа.<br><em>Бус поїхав.</em></h1><p>Самокат лишився на мокрій вулиці. Герой — у бусі. Далі шлях веде до навчального центру.</p><div class="mission"><span>🚨 Погоня завершена</span><span>🛴 Самокат залишився на дорозі</span></div><button id="retryChaseBtn">ПОВТОРИТИ РІВЕНЬ 3　↻</button> <button id="continueLevel4Btn" class="secondary">ПЕРЕЙТИ ДО РІВНЯ 4　→</button><br><button id="returnMenuBtn" class="secondary">ГОЛОВНЕ МЕНЮ</button></section>`;document.getElementById('retryChaseBtn').onclick=startLevel3;document.getElementById('continueLevel4Btn').onclick=startLevel4;document.getElementById('returnMenuBtn').onclick=()=>location.reload()}
-function updateChase(dt){updateCityTraffic(dt);const {x:dx,y:dy}=movementAxes();if(!churchEventUsed&&Math.hypot(player.x-700,player.y-760)<165){churchEventUsed=true;chaseVan.stun=2.2;showToast('ЦЕРКОВНИЙ ДЗВІН ЗБИВ БУС З КУРСУ · +2 СЕК');chime()}if(!azotEventUsed&&Math.hypot(player.x-2760,player.y-2110)<190){azotEventUsed=true;chaseVan.stun=1.7;player.boost=.8;showToast('АЗОТІВСЬКА ПАРА ЗАВАДИЛА ПЕРЕСЛІДУВАЧАМ');tone(280,.16,'sawtooth',.035,180)}const onRoad=roadsX.some(x=>Math.abs(x-player.x)<roadW/2-18)||roadsY.some(y=>Math.abs(y-player.y)<roadW/2-18),accel=onRoad?1280:820,max=(onRoad?455:325)*(player.boost>0?1.65:1);if(dx||dy){player.vx+=dx*accel*dt;player.vy+=dy*accel*dt;player.dir=Math.atan2(player.vy,player.vx)}else{player.vx*=Math.pow(.08,dt);player.vy*=Math.pow(.08,dt)}if(boostPressed){boostPressed=false;if(player.boostCd<=0){player.boost=.7;player.boostCd=2.1;const n=Math.hypot(player.vx,player.vy)||1;player.vx+=player.vx/n*240;player.vy+=player.vy/n*240;tone(300,.14,'sawtooth',.04,350)}}player.boostCd=Math.max(0,player.boostCd-dt);player.boost=Math.max(0,player.boost-dt);let sp=Math.hypot(player.vx,player.vy);if(sp>max){player.vx=player.vx/sp*max;player.vy=player.vy/sp*max}const ox=player.x,oy=player.y;player.x=clamp(player.x+player.vx*dt,24,world.w-24);player.y=clamp(player.y+player.vy*dt,24,world.h-24);for(const b of buildings){const dx=player.x-b.x,dy=player.y-b.y;if(Math.abs(dx)<b.w/2+15&&Math.abs(dy)<b.h/2+15){player.x=ox;player.y=oy;player.vx*=-.2;player.vy*=-.2;player.bump=.35}}for(const car of cars){if(Math.abs(player.x-car.x)<43&&Math.abs(player.y-car.y)<32){player.x=ox;player.y=oy;player.vx*=-.35;player.vy*=-.35;player.bump=.55;score=Math.max(0,score-10);tone(125,.1,'square',.03,-35)}}player.bump=Math.max(0,player.bump-dt);
- const vd=Math.hypot(player.x-chaseVan.x,player.y-chaseVan.y)||1,vSpeed=268;chaseVan.stun=Math.max(0,(chaseVan.stun||0)-dt);chaseVan.vx=(player.x-chaseVan.x)/vd*vSpeed;chaseVan.vy=(player.y-chaseVan.y)/vd*vSpeed;if(chaseVan.stun<=0){chaseVan.x+=chaseVan.vx*dt;chaseVan.y+=chaseVan.vy*dt}for(const p of pedestrians){const px=p.x-chaseVan.x,py=p.y-chaseVan.y,pd=Math.hypot(px,py)||1;if(pd<290){p.x=clamp(p.x+px/pd*195*dt,0,world.w);p.y=clamp(p.y+py/pd*195*dt,0,world.h);p.fleeing=.65}}if(Math.hypot(player.x-chaseVan.x,player.y-chaseVan.y)<82){showChaseCapture();return}
- if(!chaseMarkerActive&&time<=20){chaseMarkerActive=true;document.getElementById('objectiveTitle').textContent='БЕЗПЕЧНЕ МІСЦЕ';document.getElementById('objectiveText').textContent='Маркер уже на мапі. До нього ще є час — тримай курс!';showToast('МАРШРУТ ВІДКРИТО: БЕЗПЕЧНЕ МІСЦЕ');chime()}if(chaseMarkerActive){const d=Math.hypot(player.x-chaseDestination.x,player.y-chaseDestination.y);document.getElementById('objectiveText').textContent=`Безпечне місце попереду · ${Math.round(d)} м`;if(d<155){showChaseCapture();return}}
- const gap=Math.round(Math.hypot(player.x-chaseVan.x,player.y-chaseVan.y));document.getElementById('delivered').textContent=`${gap} м`;document.getElementById('speedValue').textContent=Math.round(Math.hypot(player.vx,player.vy)*.21);document.getElementById('timer').textContent=formatTime(time);document.getElementById('score').textContent=String(score).padStart(4,'0');document.getElementById('boostMeter').style.transform=`scaleX(${player.boostCd?1-player.boostCd/2.1:1})`}
-function togglePause(){if(!running||gameEnded)return;paused=!paused;document.getElementById('pause').classList.toggle('show',paused);if(!paused){last=performance.now();scheduleLoop()}}
-function finish(success=false){if(gameEnded)return;gameEnded=true;running=false;chime();document.getElementById('objectiveTitle').textContent=success?'ЗМІНА ЗАВЕРШЕНА':'ЧАС ВИЙШОВ';document.getElementById('objectiveText').textContent=success?'Усі столики обслужені. На вулиці починається наступна пригода.':'Зміна закінчилася. Кухня зачекає на наступний рейс.';const layer=document.getElementById('intro');layer.classList.remove('hidden');const result=success?`Гостей обслужено: <b>${cafeServed} / 10</b>. Кафе вижило, сирники теж.`:`Посилок доставлено: <b>${delivered}</b>. Столиків обслужено: <b>${cafeServed} / 10</b>.`;layer.innerHTML=`<section class="card"><div class="eyebrow">СМІЛА · ПІДСУМОК ЗМІНИ</div><h1>${success?'Кафе врятовано.':'Кур’єр зробив усе, що міг.'}<br><em>${success?'На сьогодні.':'Майже.'}</em></h1><p>${result}</p><div class="mission"><span>📦 Доставки <b>${delivered}</b></span><span>🍽 Столики <b>${cafeServed} / 10</b></span><span>✦ Рахунок <b>${String(score).padStart(4,'0')}</b></span></div><button id="${success?'nextLevelBtn':'restartBtn'}">${success?'ПЕРЕЙТИ ДО РІВНЯ 3　→':'ЩЕ ОДНА ЗМІНА　↻'}</button><p class="micro">Далі буде: самокат, вечірнє місто і дуже підозрілий бус.</p></section>`;if(success)document.getElementById('nextLevelBtn').onclick=showCafeToChaseCutscene;else document.getElementById('restartBtn').onclick=()=>location.reload()}
-function showCafeCutscene(){buildChaseBackdrop();running=false;paused=false;const layer=document.getElementById('intro');layer.classList.remove('hidden');layer.innerHTML=`<section class="card"><div class="eyebrow">КАТСЦЕНА · VR-КАФЕ · ПІСЛЯ КУР’ЄРСЬКОГО РЕЙДУ</div><h1>Посилки здані.<br><em>Фартух одягнений.</em></h1><p>Самокат нарешті відпочиває під вивіскою кафе. Усередині — шість гостей у великих VR-шоломах. Тепер у меню п’ять страв, а герой уже знімає TikTok про зміну: «кста, сервіс — шось на зумерском». Його типаж — фембой у пастельному худі; герою такий стиль дуже до душі.</p><div class="mission"><span>● Сирники — круглі</span><span>▦ Квадратна піца</span><span>🥫 Куп’янська згущонка</span><span>🥪 Бутерброд зі свининою</span><span>Пельмені «Єрмоліно» · фірмовий логотип</span></div><button id="enterCafeBtn">ЗАЙТИ НА ЗМІНУ　→</button><p class="micro">У кафе: плавний рух, E — взяти страву або подати її; замовлення мають чіткі кольорові мітки.</p></section>`;document.getElementById('enterCafeBtn').onclick=enterCafe}
-function showCafeToChaseCutscene(){running=false;const layer=document.getElementById('intro');layer.classList.remove('hidden');layer.innerHTML=`<section class="card"><div class="eyebrow">КАТСЦЕНА · ПІСЛЯ ЗМІНИ</div><h1>Зміна скінчилась.<br><em>Місто не спить.</em></h1><p>Герой зачиняє VR-кафе, хапає кермо самоката й виїжджає на нічну вулицю. За рогом уже розвертається оливковий бус.</p><div class="mission"><span>🛴 Заряджено</span><span>🌙 Сміла засинає</span><span>🚐 Бус уже рушив</span></div><button id="beginChase">ВИЇХАТИ В НІЧ　→</button></section>`;document.getElementById('beginChase').onclick=startLevel3}
-function enterCafe(){focusGame();document.getElementById('game').classList.remove('germany-mode','training-mode');stage=2;cafeActionCooldown=0;document.getElementById('game').classList.add('cafe-mode');time=150;cafeServed=0;cafeOrdersCreated=0;heldDish=null;cafeOrders=Array(cafeTables.length).fill(null);for(let i=0;i<4;i++)spawnCafeOrder(i);player.x=640;player.y=585;player.vx=0;player.vy=0;player.dir=0;interactPressed=false;document.getElementById('delivered').parentElement.firstChild.textContent='🍽 СТОЛИКИ ';document.getElementById('delivered').textContent='0 / 10';document.getElementById('timer').textContent='02:30';document.getElementById('objectiveTitle').textContent='ЗМІНА: VR-КАФЕ';document.getElementById('objectiveText').textContent='Бери потрібні страви на кухні, плануй маршрут між столами й не плутай замовлення.';document.querySelector('.mapbox').style.display='none';document.querySelector('.speed').style.display='none';setHint('РУХ <b>WASD / СТРІЛКИ</b>　 ДІЯ <b>E / F / ENTER / КЛІК</b>　 РИВОК <b>SPACE</b>');document.querySelector('.touch-action').style.display='block';document.getElementById('intro').classList.add('hidden');running=true;paused=false;audioStart();showToast('ЗАПАМ’ЯТАЙ СТРАВУ · НЕСИ ЇЇ ДО ВІРНОГО СТОЛИКА');last=performance.now();scheduleLoop()}
-function skipCourierLevel(){showCafeCutscene()}function formatTime(s){let v=Math.max(0,Math.ceil(s));return`${String(Math.floor(v/60)).padStart(2,'0')}:${String(v%60).padStart(2,'0')}`}
-function updateCityTraffic(dt){for(const c of cars){const v=(c.speed||65)*c.dir*dt*(stage===3?1.75:stage===1?1.38:1);if(c.horizontal){c.x+=v;if(c.dir>0&&c.x>world.w+100)c.x=-100;if(c.dir<0&&c.x<-100)c.x=world.w+100}else{c.y+=v;if(c.dir>0&&c.y>world.h+100)c.y=-100;if(c.dir<0&&c.y<-100)c.y=world.h+100}}for(const p of pedestrians){p.stun=Math.max(0,p.stun-dt);p.fleeing=Math.max(0,(p.fleeing||0)-dt);if(p.stun>0)continue;const step=p.speed*p.dir*dt*(stage===3?1.55:stage===1?1.28:1);if(p.axis==='h'){p.x+=step;if(p.x<0||p.x>world.w)p.dir*=-1}else{p.y+=step;if(p.y<0||p.y>world.h)p.dir*=-1}if(Math.random()<dt*.035){p.dir*=-1;if(Math.random()<.35)p.axis=p.axis==='h'?'v':'h'}}}
-function drawPedestrian(p,t){ctx.save();ctx.translate(p.x,p.y+Math.sin(t*5+p.phase)*2);if(p.fleeing>0)ctx.rotate(Math.sin(t*18+p.phase)*.16);ctx.fillStyle='#0004';ctx.beginPath();ctx.ellipse(2,8,10,5,0,0,Math.PI*2);ctx.fill();if(p.stun>0){ctx.rotate(Math.sin(t*24)*.3);ctx.fillStyle='#d9ad82';ctx.beginPath();ctx.arc(0,-10,7,0,Math.PI*2);ctx.fill();ctx.fillStyle=p.color;rounded(ctx,-7,-3,14,13,5);ctx.restore();if(Math.floor(t*8)%2===0){ctx.fillStyle='#fff1a3';ctx.font='bold 13px Arial';ctx.textAlign='center';ctx.fillText('✦',p.x,p.y-24)}return}ctx.fillStyle=p.color;rounded(ctx,-6,-5,12,14,4);ctx.fillStyle='#26353c';ctx.fillRect(-5,7,4,8);ctx.fillRect(2,7,4,8);ctx.fillStyle='#d9ad82';ctx.beginPath();ctx.arc(0,-10,7,0,Math.PI*2);ctx.fill();ctx.restore();if(p.fleeing>0){ctx.fillStyle='#ffdf80';ctx.font='900 14px Arial';ctx.textAlign='center';ctx.fillText('!',p.x,p.y-24)}}
-let chaseBackdrop=null,buildingBackdrop=false;
-function drawGround(){const night=stage===3;ctx.fillStyle=night?'#19242a':'#9bb58b';ctx.fillRect(0,0,world.w,world.h);ctx.save();ctx.globalAlpha=night?.38:.13;ctx.strokeStyle=night?'#29363c':'#e6e2bd';ctx.lineWidth=2;for(let x=20;x<world.w;x+=48){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,world.h);ctx.stroke()}for(let y=15;y<world.h;y+=48){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(world.w,y);ctx.stroke()}ctx.restore();for(let i=0;i<roadsX.length-1;i++)for(let j=0;j<roadsY.length-1;j++){const x=roadsX[i]+120,y=roadsY[j]+120;ctx.fillStyle=night?'#202c30':'#86a57f';rounded(ctx,x,y,420,400,14);ctx.fillStyle=night?'#263639':'#aac19a';rounded(ctx,x+15,y+15,390,370,12)}ctx.fillStyle=night?'#3c4141':'#b7b9a4';roadsX.forEach(x=>{ctx.fillRect(x-roadW/2-20,0,roadW+40,world.h);ctx.fillStyle=night?'#171d22':'#48515a';ctx.fillRect(x-roadW/2,0,roadW,world.h);ctx.fillStyle=night?'#3c4141':'#b7b9a4'});roadsY.forEach(y=>{ctx.fillRect(0,y-roadW/2-20,world.w,roadW+40);ctx.fillStyle=night?'#171d22':'#48515a';ctx.fillRect(0,y-roadW/2,world.w,roadW);ctx.fillStyle=night?'#3c4141':'#b7b9a4'});ctx.save();ctx.setLineDash([24,22]);ctx.strokeStyle=night?'#8c7751':'#e8d997';ctx.lineWidth=4;roadsX.forEach(x=>{ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,world.h);ctx.stroke()});roadsY.forEach(y=>{ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(world.w,y);ctx.stroke()});ctx.restore();ctx.fillStyle=night?'#9a8a67':'#f1e6c4';roadsX.forEach(x=>roadsY.forEach(y=>{for(let k=-2;k<=2;k++){ctx.fillRect(x+k*12-3,y-116,6,30);ctx.fillRect(x+k*12-3,y+86,6,30);ctx.fillRect(x-116,y+k*12-3,30,6);ctx.fillRect(x+86,y+k*12-3,30,6)}}))}
-function drawScenery(t){const night=stage===3,minX=buildingBackdrop?0:player.x-W*.6,maxX=buildingBackdrop?world.w:player.x+W*.6,minY=buildingBackdrop?0:player.y-H*.6,maxY=buildingBackdrop?world.h:player.y+H*.6;for(const b of buildings){if(b.x+b.w<minX||b.x-b.w>maxX||b.y+b.h<minY||b.y-b.h>maxY)continue;ctx.fillStyle='#0005';rounded(ctx,b.x-b.w/2+6,b.y-b.h/2+8,b.w,b.h,7);ctx.fillStyle=night?'#42494b':'#d2cbb1';rounded(ctx,b.x-b.w/2-3,b.y-b.h/2-3,b.w+6,b.h+6,7);ctx.fillStyle=night?'#27343a':b.roof;rounded(ctx,b.x-b.w/2,b.y-b.h/2,b.w,b.h,6);ctx.fillStyle=night?'#34434a':b.c;rounded(ctx,b.x-b.w/2+5,b.y-b.h/2+6,b.w-10,b.h-16,5);ctx.fillStyle=night?'#62635c':'#d7d0b1';ctx.fillRect(b.x-b.w/2+7,b.y+b.h/2-16,b.w-14,9);for(let wx=b.x-b.w/2+12;wx<b.x+b.w/2-9;wx+=19)for(let wy=b.y-b.h/2+13;wy<b.y+b.h/2-16;wy+=21){ctx.fillStyle=night?(((Math.floor(wx/19)+Math.floor(wy/21)+Math.floor(b.kind*4))%4===0)?'#f2cb7b':'#45545b'):'#a7d4cf';ctx.fillRect(wx,wy,8,7);ctx.fillStyle=night?'#b99058':'#debe82';ctx.fillRect(wx+3,wy+7,2,7)}if(b.kind>.92){ctx.fillStyle=night?'#d5ad64':'#f0d889';ctx.fillRect(b.x-7,b.y-b.h/2+2,14,5)}}for(const tr of trees){if(tr.x<minX||tr.x>maxX||tr.y<minY||tr.y>maxY)continue;ctx.fillStyle='#0005';ctx.beginPath();ctx.ellipse(tr.x+5,tr.y+9,tr.r*1.1,tr.r*.7,0,0,Math.PI*2);ctx.fill();ctx.fillStyle=night?'#332b28':'#795f48';ctx.fillRect(tr.x-3,tr.y-2,6,14);ctx.fillStyle=night?'#152b26':'#507c53';ctx.beginPath();ctx.arc(tr.x,tr.y-3,tr.r,0,Math.PI*2);ctx.fill();ctx.fillStyle=night?'#1d3830':'#78a96a';ctx.beginPath();ctx.arc(tr.x-5,tr.y-8,tr.r*.57,0,Math.PI*2);ctx.fill();ctx.fillStyle=night?'#7d744f':'#b7ce76';ctx.beginPath();ctx.arc(tr.x+5,tr.y-5,3,0,Math.PI*2);ctx.fill()}for(let y=120;y<world.h;y+=270)for(const x of roadsX){ctx.fillStyle=night?'#ffffff10':'#ffffff18';ctx.fillRect(x-roadW/2+8,y,15,40);ctx.strokeStyle=night?'#343a3c':'#323b40';for(let k=0;k<5;k++){ctx.beginPath();ctx.moveTo(x-roadW/2+10,y+k*8);ctx.lineTo(x-roadW/2+22,y+k*8);ctx.stroke()}}for(const p of puddles){if(p.x+p.rx<minX||p.x-p.rx>maxX||p.y+p.ry<minY||p.y-p.ry>maxY)continue;ctx.fillStyle=night?'#3a6b8140':'#66b6c64a';ctx.beginPath();ctx.ellipse(p.x,p.y,p.rx,p.ry,-.2,0,Math.PI*2);ctx.fill();ctx.strokeStyle=night?'#b1c6cc55':'#d8f0e873';ctx.beginPath();ctx.ellipse(p.x-3,p.y-2,p.rx*.55,p.ry*.3,-.2,Math.PI,Math.PI*2);ctx.stroke()}for(const p of pigeons){if(p.x<minX||p.x>maxX||p.y<minY||p.y>maxY)continue;const flap=Math.sin(t*8+p.phase);ctx.fillStyle=night?'#303a40':'#394b51';ctx.beginPath();ctx.ellipse(p.x,p.y,7,4,0,0,Math.PI*2);ctx.fill();ctx.beginPath();ctx.moveTo(p.x-2,p.y);ctx.quadraticCurveTo(p.x-8,p.y-5-flap*2,p.x-10,p.y-1);ctx.quadraticCurveTo(p.x-5,p.y-2,p.x,p.y+1);ctx.fill();ctx.fillStyle=night?'#b8a06b':'#e5bd62';ctx.fillRect(p.x+6,p.y-1,3,2)}}
-function drawSmilaLandmarks(t){ctx.save();ctx.translate(700,760);ctx.fillStyle='#0005';ctx.beginPath();ctx.ellipse(0,68,112,28,0,0,Math.PI*2);ctx.fill();ctx.fillStyle='#d8d0ba';rounded(ctx,-92,-5,184,77,7);ctx.fillStyle='#b94a43';ctx.beginPath();ctx.moveTo(-104,2);ctx.lineTo(0,-65);ctx.lineTo(104,2);ctx.closePath();ctx.fill();ctx.fillStyle='#35414b';ctx.fillRect(-19,22,38,50);ctx.fillStyle='#f6da8b';ctx.beginPath();ctx.arc(0,-49,5,0,Math.PI*2);ctx.fill();ctx.fillStyle='#21303a';rounded(ctx,-83,-23,166,21,5);ctx.fillStyle='#fff4dd';ctx.font='bold 11px Arial';ctx.textAlign='center';ctx.fillText('СВЯТА ЦЕРКВА СМІЛИ',0,-8);ctx.restore();ctx.save();ctx.translate(2760,2110);ctx.fillStyle='#273236';rounded(ctx,-175,-60,350,124,11);ctx.fillStyle='#566466';rounded(ctx,-151,-48,110,105,5);ctx.fillStyle='#7a8581';ctx.fillRect(-135,-35,82,10);ctx.fillStyle='#87918b';ctx.fillRect(-135,-14,82,8);ctx.fillStyle='#3c4849';rounded(ctx,8,-31,95,91,5);for(const [x,h] of [[-109,105],[-30,145],[53,124]]){ctx.fillStyle='#515d5e';ctx.fillRect(x,-60-h,29,h);ctx.fillStyle='#d47f58';ctx.fillRect(x+8,-67-h,12,7);for(let k=0;k<3;k++){ctx.globalAlpha=.16;ctx.fillStyle='#b6beb5';ctx.beginPath();ctx.arc(x+14,Math.sin(t+k)*4-74-h-k*16,11+k*3,0,Math.PI*2);ctx.fill()}ctx.globalAlpha=1}ctx.fillStyle='#f1ca80';ctx.font='900 17px Arial';ctx.textAlign='center';ctx.fillText('АЗОТ · СМІЛА',0,84);ctx.restore()}function drawDistrict(){// title mural / plaza lettering, no external assets
-const fx=1740,fy=1640;ctx.save();ctx.translate(fx,fy);ctx.fillStyle='#d4c394';rounded(ctx,-123,-95,246,190,13);ctx.fillStyle='#61756b';rounded(ctx,-110,-83,220,166,9);ctx.fillStyle='#4a625b';rounded(ctx,-91,-63,182,126,8);ctx.fillStyle='#ead79b';ctx.font='bold 16px sans-serif';ctx.textAlign='center';ctx.fillText('СМІЛА',0,-11);ctx.font='11px sans-serif';ctx.fillText('МІСТО ВЕЛИКИХ МАРШРУТІВ',0,10);ctx.fillStyle='#e89061';ctx.beginPath();ctx.arc(0,38,8,0,Math.PI*2);ctx.fill();ctx.fillStyle='#8fb5a2';ctx.fillRect(-55,46,110,3);ctx.restore();
-// roadside park band
-ctx.fillStyle='#83a975';ctx.fillRect(1910,1510,220,250);ctx.fillStyle='#9bbd83';for(let i=0;i<9;i++){let x=1930+(i%3)*66,y=1535+Math.floor(i/3)*68;ctx.beginPath();ctx.arc(x,y,19,0,Math.PI*2);ctx.fill();ctx.fillStyle='#547e55';ctx.beginPath();ctx.arc(x-4,y-5,13,0,Math.PI*2);ctx.fill();ctx.fillStyle='#9bbd83'}
+
+/* Source: js/01-runtime.js */
+(() => {
+  "use strict";
+  const DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+  const canvas = document.getElementById("world"),
+    mini = document.getElementById("minimap"),
+    W = 1280,
+    H = 800,
+    MINI_W = 240,
+    MINI_H = 150;
+  canvas.width = W * DPR;
+  canvas.height = H * DPR;
+  mini.width = MINI_W * DPR;
+  mini.height = MINI_H * DPR;
+  canvas.tabIndex = 0;
+  const focusGame = () =>
+    setTimeout(() => canvas.focus({ preventScroll: true }), 40);
+  let ctx = canvas.getContext("2d");
+  const mctx = mini.getContext("2d");
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  mctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  const world = { w: 3600, h: 2800 };
+  const roadW = 188,
+    roadsX = [420, 1080, 1740, 2400, 3060],
+    roadsY = [360, 1000, 1640, 2280];
+  const player = {
+    x: 260,
+    y: 380,
+    vx: 0,
+    vy: 0,
+    dir: 0,
+    r: 24,
+    speed: 0,
+    boost: 0,
+    boostCd: 0,
+    bump: 0,
+  };
+  const stopPool = [
+    {
+      x: 420,
+      y: 360,
+      brand: "ukrposhta",
+      name: "УКРПОШТА",
+      sub: "Листоноша легенд",
+      color: "#efb72e",
+    },
+    {
+      x: 1740,
+      y: 1000,
+      brand: "ukrposhta",
+      name: "УКРПОШТА",
+      sub: "Відділення на розі",
+      color: "#efb72e",
+    },
+    {
+      x: 3060,
+      y: 1640,
+      brand: "ukrposhta",
+      name: "УКРПОШТА",
+      sub: "Пошта міста",
+      color: "#efb72e",
+    },
+    {
+      x: 1080,
+      y: 2280,
+      brand: "ukrposhta",
+      name: "УКРПОШТА",
+      sub: "Посилка чекає",
+      color: "#efb72e",
+    },
+    {
+      x: 1080,
+      y: 360,
+      brand: "nova",
+      name: "НОВА ПОШТА",
+      sub: "Швидше за голуба",
+      color: "#e32636",
+    },
+    {
+      x: 2400,
+      y: 1000,
+      brand: "nova",
+      name: "НОВА ПОШТА",
+      sub: "Експрес-маршрут",
+      color: "#e32636",
+    },
+    {
+      x: 420,
+      y: 1640,
+      brand: "nova",
+      name: "НОВА ПОШТА",
+      sub: "Нова адреса",
+      color: "#e32636",
+    },
+    {
+      x: 3060,
+      y: 2280,
+      brand: "nova",
+      name: "НОВА ПОШТА",
+      sub: "Доставляємо легенди",
+      color: "#e32636",
+    },
+    {
+      x: 2400,
+      y: 360,
+      brand: "meest",
+      name: "MEEST ПОШТА",
+      sub: "Посилка крізь епохи",
+      color: "#2873b9",
+    },
+    {
+      x: 3060,
+      y: 1000,
+      brand: "meest",
+      name: "MEEST ПОШТА",
+      sub: "Світ ближче",
+      color: "#2873b9",
+    },
+    {
+      x: 1080,
+      y: 1640,
+      brand: "meest",
+      name: "MEEST ПОШТА",
+      sub: "Твоя наступна ціль",
+      color: "#2873b9",
+    },
+    {
+      x: 1740,
+      y: 2280,
+      brand: "meest",
+      name: "MEEST ПОШТА",
+      sub: "Швидкий заїзд",
+      color: "#2873b9",
+    },
+  ];
+  const logos = {
+      ukrposhta: new Image(),
+      nova: new Image(),
+      meest: new Image(),
+    },
+    ermolinoLogo = new Image();
+  logos.ukrposhta.src = "assets/ukrposhta.png";
+  logos.nova.src = "assets/nova-poshta.png";
+  logos.meest.src = "assets/meest.png";
+  ermolinoLogo.src = "assets/ermolino-logo.png";
+  let deliveries = [],
+    lastStop = -1,
+    courierToCafe = false;
+  const cafeDestination = { x: 3060, y: 360 },
+    chaseDestination = { x: 420, y: 360 };
+  let chaseMarkerActive = false,
+    chaseVan = { x: 0, y: 0, vx: 0, vy: 0 },
+    churchEventUsed = false,
+    azotEventUsed = false;
+  function nextDelivery() {
+    let candidates = stopPool
+      .map((s, i) => ({ s, i }))
+      .filter(({ i }) => i !== lastStop);
+    const pick = candidates[Math.floor(Math.random() * candidates.length)];
+    lastStop = pick.i;
+    deliveries = [{ ...pick.s, done: false }];
+    return deliveries[0];
+  }
+  function nearestGrid(value, list) {
+    return list.reduce(
+      (best, v) => (Math.abs(v - value) < Math.abs(best - value) ? v : best),
+      list[0],
+    );
+  }
+  function cityRoute(from, to) {
+    if (!to) return [];
+    const sx = nearestGrid(from.x, roadsX),
+      sy = nearestGrid(from.y, roadsY),
+      tx = nearestGrid(to.x, roadsX),
+      ty = nearestGrid(to.y, roadsY),
+      entry =
+        Math.abs(from.x - sx) <= Math.abs(from.y - sy)
+          ? { x: sx, y: from.y }
+          : { x: from.x, y: sy },
+      exit =
+        Math.abs(to.x - tx) <= Math.abs(to.y - ty)
+          ? { x: tx, y: to.y }
+          : { x: to.x, y: ty },
+      points = [{ x: from.x, y: from.y }, entry, { x: sx, y: sy }];
+    const xi = roadsX.indexOf(sx),
+      xt = roadsX.indexOf(tx),
+      yi = roadsY.indexOf(sy),
+      yt = roadsY.indexOf(ty),
+      stepX = Math.sign(xt - xi),
+      stepY = Math.sign(yt - yi);
+    for (let i = xi + stepX; i !== xt + stepX && stepX; i += stepX)
+      points.push({ x: roadsX[i], y: sy });
+    for (let i = yi + stepY; i !== yt + stepY && stepY; i += stepY)
+      points.push({ x: tx, y: roadsY[i] });
+    points.push({ x: tx, y: ty }, exit, { x: to.x, y: to.y });
+    return points.filter(
+      (q, i, a) => !i || Math.hypot(q.x - a[i - 1].x, q.y - a[i - 1].y) > 1,
+    );
+  }
+  function shuffled(items) {
+    const result = [...items];
+    for (let i = result.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [result[i], result[j]] = [result[j], result[i]];
+    }
+    return result;
+  }
+  function routeDistance(points) {
+    let d = 0;
+    for (let i = 1; i < points.length; i++)
+      d += Math.hypot(
+        points[i].x - points[i - 1].x,
+        points[i].y - points[i - 1].y,
+      );
+    return d;
+  }
+  function routeHeading(points) {
+    if (points.length < 2) return "МАРШРУТ";
+    const dx = points[1].x - points[0].x,
+      dy = points[1].y - points[0].y;
+    return Math.abs(dx) > Math.abs(dy)
+      ? dx > 0
+        ? "ПОВЕРНИ ПРАВОРУЧ"
+        : "ПОВЕРНИ ЛІВОРУЧ"
+      : dy > 0
+        ? "ЇДЬ УНИЗ"
+        : "ЇДЬ УГОРУ";
+  }
+  const campaignChapterNames = [
+    "",
+    "Кур’єрський рейд",
+    "VR-кафе",
+    "Нічна погоня",
+    "Санвузол",
+    "Кукурудзяне поле",
+    "VR-завод",
+    "Лісова втеча",
+    "Pfand-квест",
+  ];
+  let campaignChapter = 0;
+  try {
+    const saved = Number(localStorage.getItem("escapeSmila.chapter"));
+    if (saved) campaignChapter = Math.max(1, Math.min(8, saved));
+  } catch {}
+  function saveCampaignChapter(chapter) {
+    campaignChapter = clamp(chapter, 1, 8);
+    try {
+      localStorage.setItem("escapeSmila.chapter", String(campaignChapter));
+    } catch {}
+  }
+  function continueCampaign() {
+    switch (campaignChapter) {
+      case 2:
+        return enterCafe();
+      case 3:
+        return startLevel3();
+      case 4:
+        return startLevel4();
+      case 5:
+        return startCornfieldLevel();
+      case 6:
+        return showVrCutscene();
+      case 7:
+        return startForestLevel();
+      case 8:
+        return showGermanyTransition();
+      default:
+        return start();
+    }
+  }
+  function setupContinueButton() {
+    const button = document.getElementById("continueCampaignBtn");
+    if (button) {
+      button.hidden = !campaignChapter;
+      if (campaignChapter)
+        button.textContent =
+          "ПРОДОВЖИТИ · " + campaignChapterNames[campaignChapter];
+    }
+  }
+  const keys = new Set(),
+    gamepadKeys = new Set();
+  let gamepadMoveX = 0,
+    gamepadMoveY = 0,
+    padSpaceWas = false,
+    padInteractWas = false,
+    padDashWas = false;
+  function keyDown(code) {
+    return keys.has(code) || gamepadKeys.has(code);
+  }
+  function movementAxes() {
+    let x =
+        (keyDown("KeyD") || keyDown("ArrowRight") ? 1 : 0) -
+        (keyDown("KeyA") || keyDown("ArrowLeft") ? 1 : 0),
+      y =
+        (keyDown("KeyS") || keyDown("ArrowDown") ? 1 : 0) -
+        (keyDown("KeyW") || keyDown("ArrowUp") ? 1 : 0);
+    x = clamp(x + gamepadMoveX, -1, 1);
+    y = clamp(y + gamepadMoveY, -1, 1);
+    const m = Math.hypot(x, y);
+    if (m > 1) {
+      x /= m;
+      y /= m;
+    }
+    return { x, y };
+  }
+  let running = false,
+    paused = false,
+    won = false,
+    time = 60,
+    score = 0,
+    delivered = 0,
+    streak = 0,
+    bestStreak = 0,
+    last = performance.now(),
+    toastTimer = 0,
+    toastToken = 0,
+    hintTimer = 0,
+    soundOn = true,
+    audio = null,
+    gameEnded = false,
+    stage = 1,
+    interactPressed = false,
+    boostPressed = false;
+  const cafeMenu = [
+    { id: "syrnyky", name: "Сирники", icon: "●", x: 140, c: "#d8a942" },
+    { id: "pizza", name: "Квадратна піца", icon: "▦", x: 390, c: "#cf654f" },
+    { id: "pelmeni", name: "Пельмені Єрмоліно", x: 640, c: "#8c9b72" },
+    {
+      id: "condensed",
+      name: "Куп’янська згущонка",
+      icon: "🥫",
+      x: 890,
+      c: "#6b91c4",
+    },
+    {
+      id: "sandwich",
+      name: "Бутерброд зі свининою",
+      icon: "🥪",
+      x: 1140,
+      c: "#a67b55",
+    },
+  ];
+  const cafeTables = [
+    { x: 280, y: 280 },
+    { x: 640, y: 280 },
+    { x: 1000, y: 280 },
+    { x: 280, y: 490 },
+    { x: 640, y: 490 },
+    { x: 1000, y: 490 },
+  ];
+  let cafeOrders = [],
+    cafeServed = 0,
+    cafeOrdersCreated = 0,
+    heldDish = null,
+    cafeActionCooldown = 0;
+  let seed = 83617;
+  function rand() {
+    seed = (seed * 1664525 + 1013904223) >>> 0;
+    return seed / 4294967296;
+  }
+  const buildings = [],
+    trees = [],
+    cars = [],
+    puddles = [],
+    pigeons = [],
+    pedestrians = [];
+  function nearRoad(x, y) {
+    return (
+      roadsX.some((a) => Math.abs(x - a) < roadW / 2 + 115) ||
+      roadsY.some((a) => Math.abs(y - a) < roadW / 2 + 115)
+    );
+  }
+  for (let x = 100; x < world.w - 120; x += 110)
+    for (let y = 100; y < world.h - 100; y += 100) {
+      let px = x + (rand() - 0.5) * 44,
+        py = y + (rand() - 0.5) * 40;
+      if (!nearRoad(px, py) && rand() > 0.23) {
+        let bw = 55 + rand() * 46,
+          bh = 48 + rand() * 45;
+        buildings.push({
+          x: px,
+          y: py,
+          w: bw,
+          h: bh,
+          c: ["#d6a66c", "#c8bd9c", "#b7c4bb", "#d78970", "#8eaaa3", "#ddc48b"][
+            Math.floor(rand() * 6)
+          ],
+          roof: ["#765f55", "#596b68", "#94725b", "#6a727c"][
+            Math.floor(rand() * 4)
+          ],
+          kind: rand(),
+        });
+      } else if (!nearRoad(px, py) && rand() > 0.5)
+        trees.push({ x: px, y: py, r: 13 + rand() * 10 });
+    }
+  for (let i = 0; i < 30; i++) {
+    let rx = roadsX[Math.floor(rand() * roadsX.length)],
+      ry = roadsY[Math.floor(rand() * roadsY.length)];
+    let horizontal = rand() > 0.5;
+    cars.push({
+      x: horizontal ? rand() * world.w : rx + (rand() - 0.5) * 100,
+      y: horizontal ? ry + (rand() - 0.5) * 100 : rand() * world.h,
+      horizontal,
+      dir: rand() > 0.5 ? 1 : -1,
+      color: ["#d9d4bf", "#729197", "#bd755a", "#394954", "#e0b546"][
+        Math.floor(rand() * 5)
+      ],
+      phase: rand() * 6,
+    });
+  }
+  for (let i = 0; i < 30; i++)
+    pigeons.push({
+      x: 150 + rand() * (world.w - 300),
+      y: 130 + rand() * (world.h - 260),
+      phase: rand() * 10,
+    });
+  for (let i = 0; i < 74; i++) {
+    const horizontal = rand() > 0.5,
+      road = horizontal
+        ? roadsY[Math.floor(rand() * roadsY.length)]
+        : roadsX[Math.floor(rand() * roadsX.length)];
+    pedestrians.push({
+      x: horizontal
+        ? rand() * world.w
+        : road + (rand() > 0.5 ? 1 : -1) * (roadW / 2 + 26),
+      y: horizontal
+        ? road + (rand() > 0.5 ? 1 : -1) * (roadW / 2 + 26)
+        : rand() * world.h,
+      axis: horizontal ? "h" : "v",
+      dir: rand() > 0.5 ? 1 : -1,
+      speed: 22 + rand() * 35,
+      color: ["#d98261", "#e4c66b", "#77a6a1", "#b9b7d1", "#e1d2bc"][
+        Math.floor(rand() * 5)
+      ],
+      stun: 0,
+      phase: rand() * 9,
+    });
+  }
+  for (let i = 0; i < 24; i++)
+    puddles.push({
+      x: 140 + rand() * (world.w - 280),
+      y: 140 + rand() * (world.h - 280),
+      rx: 13 + rand() * 20,
+      ry: 8 + rand() * 12,
+    });
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  function rounded(c, x, y, w, h, r) {
+    c.beginPath();
+    c.roundRect(x, y, w, h, r);
+    c.fill();
+  }
+  function audioStart() {
+    if (!soundOn) return;
+    try {
+      audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+      if (audio.state === "suspended") audio.resume();
+    } catch {}
+  }
+  function tone(freq, dur = 0.12, type = "sine", vol = 0.04, slide = 0) {
+    if (!audio || !soundOn) return;
+    const o = audio.createOscillator(),
+      g = audio.createGain();
+    o.type = type;
+    o.frequency.setValueAtTime(freq, audio.currentTime);
+    if (slide)
+      o.frequency.exponentialRampToValueAtTime(
+        Math.max(35, freq + slide),
+        audio.currentTime + dur,
+      );
+    g.gain.setValueAtTime(vol, audio.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, audio.currentTime + dur);
+    o.connect(g);
+    g.connect(audio.destination);
+    o.start();
+    o.stop(audio.currentTime + dur);
+  }
+  function chime() {
+    [660, 880, 1100].forEach((n, i) =>
+      setTimeout(() => tone(n, 0.25, "triangle", 0.065, 180), i * 90),
+    );
+  }
+  function setHint(html) {
+    const el = document.querySelector(".hint");
+    el.innerHTML = html;
+    el.classList.remove("hint-fade");
+    clearTimeout(hintTimer);
+    hintTimer = setTimeout(() => el.classList.add("hint-fade"), 4200);
+  }
+  function showToast(text) {
+    const el = document.getElementById("toast");
+    el.textContent = text;
+    el.classList.add("show");
+    toastTimer = 2.15;
+    const token = ++toastToken;
+    setTimeout(() => {
+      if (token === toastToken) {
+        el.classList.remove("show");
+        toastTimer = 0;
+      }
+    }, 2150);
+  }
+  function start() {
+    saveCampaignChapter(1);
+    focusGame();
+    churchEventUsed = false;
+    azotEventUsed = false;
+    setHint(document.querySelector(".hint").innerHTML);
+    stage = 1;
+    courierToCafe = false;
+    delivered = 0;
+    score = 0;
+    time = 60;
+    document.getElementById("intro").classList.add("hidden");
+    running = true;
+    paused = false;
+    gameEnded = false;
+    audioStart();
+    last = performance.now();
+    showToast("WASD / СТРІЛКИ — РУХ · SPACE — РИВОК");
+    scheduleLoop();
+  }
+  let trainingPhase = "brush_pickup",
+    toothbrush = { x: 210, y: 570 },
+    toiletStalls = [],
+    toiletGuests = [],
+    toiletGuestTimer = 0,
+    toiletGuestVisits = 0,
+    trainingBrush = false,
+    brushProgress = 0,
+    cleanElapsed = 0,
+    trainingDoor = { x: 1150, y: 150 },
+    guestTimer = 0,
+    fieldEnemies = [],
+    fieldShots = [],
+    fieldLives = 6,
+    shotCooldown = 0,
+    fieldProgress = 0,
+    fieldTarget = 4200,
+    fieldAimX = 0,
+    fieldAimY = -1,
+    fieldCar = null,
+    fieldSway = 0,
+    fieldInvuln = 0,
+    fieldTracks = [],
+    fieldDecoys = [],
+    fieldTrackX = 0,
+    fieldTrackY = 0,
+    fieldSpawnTimer = 0.6,
+    fieldBackdrop = null;
+  function startLevel4() {
+    saveCampaignChapter(4);
+    focusGame();
+    document.getElementById("toast").classList.remove("show");
+    toastTimer = 0;
+    stage = 5;
+    document.getElementById("game").classList.remove("germany-mode");
+    document.getElementById("game").classList.add("training-mode");
+    gameEnded = false;
+    running = true;
+    paused = false;
+    trainingPhase = "brush_pickup";
+    toothbrush = { x: 250, y: 640 };
+    toiletStalls = [
+      { x: 320, y: 325, progress: 0, occupied: false, mess: true },
+      { x: 640, y: 325, progress: 0, occupied: false, mess: true },
+      { x: 960, y: 325, progress: 0, occupied: false, mess: true },
+    ];
+    toiletGuests = [];
+    toiletGuestTimer = 1.1;
+    toiletGuestVisits = 0;
+    trainingBrush = false;
+    brushProgress = 0;
+    cleanElapsed = 0;
+    trainingDoor = { x: 1150, y: 150 };
+    fieldEnemies = [];
+    fieldShots = [];
+    fieldLives = 6;
+    shotCooldown = 0;
+    fieldProgress = 0;
+    fieldCar = null;
+    player.x = 165;
+    player.y = 690;
+    player.vx = 0;
+    player.vy = 0;
+    player.dir = -Math.PI / 2;
+    player.boost = 0;
+    player.boostCd = 0;
+    keys.clear();
+    boostPressed = false;
+    interactPressed = false;
+    document.getElementById("game").classList.remove("cafe-mode");
+    document.querySelector(".mapbox").style.display = "none";
+    document.querySelector(".speed").style.display = "none";
+    setHint("");
+    document.getElementById("delivered").parentElement.firstChild.textContent =
+      "🧽 КАБІНКИ ";
+    document.getElementById("delivered").textContent = "0 / 3";
+    document.getElementById("timer").textContent = "04A";
+    document.getElementById("objectiveTitle").textContent =
+      "СПОЧАТКУ — ЧИСТИТЬ ЗУБИ";
+    document.getElementById("objectiveText").textContent =
+      "Візьми щітку біля раковини. Потім відчисти три кабінки.";
+    document.getElementById("intro").classList.add("hidden");
+    document.getElementById("pause").classList.remove("show");
+    audioStart();
+    last = performance.now();
+    scheduleLoop();
+  }
+  function startCornfieldRun() {
+    saveCampaignChapter(5);
+    document.getElementById("toast").classList.remove("show");
+    toastTimer = 0;
+    stage = 9;
+    document.getElementById("game").classList.add("training-mode");
+    document.getElementById("objectiveTitle").textContent =
+      "04B · КУКУРУДЗЯНЕ ПОЛЕ";
+    trainingPhase = "field";
+    guestTimer = 0.65;
+    fieldInvuln = 0;
+    fieldProgress = 0;
+    fieldTarget = 4200;
+    fieldAimX = 0;
+    fieldAimY = -1;
+    fieldSway = 0;
+    fieldTracks = [];
+    fieldDecoys = [];
+    fieldTrackX = 640;
+    fieldTrackY = 0;
+    fieldSpawnTimer = 0.6;
+    fieldCar = { x: 640, y: -fieldTarget, phase: 0, ready: false };
+    player.x = 640;
+    player.y = 0;
+    player.vx = 0;
+    player.vy = 0;
+    player.dir = -Math.PI / 2;
+    fieldEnemies = [];
+    fieldShots = [];
+    fieldLives = 6;
+    shotCooldown = 0;
+    document.getElementById("objectiveTitle").textContent = "ПРОРВИСЯ ДО MAZDA";
+    document.getElementById("objectiveText").textContent =
+      "Біжи крізь кукурудзу. Свіжі сліди показують маршрути; сирником відверни погоню в інший прохід.";
+    document.getElementById("delivered").parentElement.firstChild.textContent =
+      "🚙 ДО ВИЇЗДУ ";
+    document.getElementById("delivered").textContent = "0%";
+    document.getElementById("timer").textContent = "ПОЛЕ";
+    setHint("");
+    buildCornfieldBackdrop();
+    last = performance.now();
+  }
+  function startCornfieldLevel() {
+    saveCampaignChapter(5);
+    focusGame();
+    gameEnded = false;
+    running = true;
+    paused = false;
+    document.getElementById("intro").classList.add("hidden");
+    document.getElementById("pause").classList.remove("show");
+    document
+      .getElementById("game")
+      .classList.remove("arcade-mode", "cafe-mode");
+    document.querySelector(".mapbox").style.display = "none";
+    document.querySelector(".speed").style.display = "none";
+    startCornfieldRun();
+    last = performance.now();
+    audioStart();
+    scheduleLoop();
+  }
+  function drawEscapeTransition(t) {
+    ctx.clearRect(0, 0, W, H);
+    const g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, "#344d42");
+    g.addColorStop(0.55, "#566344");
+    g.addColorStop(1, "#1c2a22");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+    for (let i = 0; i < 9; i++) {
+      const x = i * 160 + Math.sin(t * 2 + i) * 12;
+      ctx.fillStyle = "#456343";
+      ctx.beginPath();
+      ctx.ellipse(
+        x,
+        270 + Math.sin(t * 2.7 + i) * 12,
+        66,
+        192,
+        0,
+        0,
+        Math.PI * 2,
+      );
+      ctx.fill();
+      ctx.strokeStyle = "#a9c468";
+      ctx.lineWidth = 6;
+      ctx.beginPath();
+      ctx.moveTo(x, 90);
+      ctx.lineTo(x + Math.sin(t + i) * 20, 510);
+      ctx.stroke();
+    }
+    ctx.fillStyle = "#101a20ed";
+    rounded(ctx, 190, 120, 900, 140, 18);
+    ctx.fillStyle = "#f5dfae";
+    ctx.font = "900 28px Arial";
+    ctx.textAlign = "center";
+    ctx.fillText("ЗМІНУ ЗАВЕРШЕНО · ВИХІД У КУКУРУДЗУ", W / 2, 166);
+    ctx.fillStyle = "#e2e9df";
+    ctx.font = "bold 18px Arial";
+    ctx.fillText("За службовими дверима вже чекає поле.", W / 2, 205);
+    ctx.fillStyle = "#ffd166";
+    ctx.font = "900 16px Arial";
+    ctx.fillText(
+      "НАТИСНИ E АБО ENTER, ЩОБ ПОЧАТИ ОКРЕМИЙ ЕТАП 04B",
+      W / 2,
+      235,
+    );
+    drawTrainingAvatar(640, 590, t);
+  }
+
+
+/* Source: js/02-early-levels.js */
+function startLevel3() {
+  saveCampaignChapter(3);
+  focusGame();
+  document
+    .getElementById("game")
+    .classList.remove("germany-mode", "training-mode");
+  churchEventUsed = false;
+  azotEventUsed = false;
+  stage = 3;
+  gameEnded = false;
+  running = true;
+  paused = false;
+  time = 60;
+  chaseMarkerActive = false;
+  courierToCafe = false;
+  deliveries = [];
+  keys.clear();
+  boostPressed = false;
+  player.x = 1740;
+  player.y = 1640;
+  player.vx = 0;
+  player.vy = 0;
+  player.dir = 0;
+  player.boost = 0;
+  player.boostCd = 0;
+  chaseVan = { x: 1270, y: 1430, vx: 0, vy: 0 };
+  buildChaseBackdrop();
+  document.getElementById("game").classList.remove("cafe-mode");
+  document.querySelector(".mapbox").style.display = "block";
+  document.querySelector(".speed").style.display = "block";
+  setHint("РУХ <b>WASD / СТРІЛКИ</b>　 РИВОК <b>SPACE</b>　 ПАУЗА <b>ESC</b>");
+  document.getElementById("delivered").parentElement.firstChild.textContent =
+    "🚨 ПОГОНЯ ";
+  document.getElementById("delivered").textContent = "—";
+  document.getElementById("timer").textContent = "01:00";
+  document.getElementById("objectiveTitle").textContent = "ТІКАЙ ВІД БУСА";
+  document.getElementById("objectiveText").textContent =
+    "Уникай машин і тримай швидкість. Шукай шлях крізь місто.";
+  document.getElementById("intro").classList.add("hidden");
+  document.getElementById("pause").classList.remove("show");
+  audioStart();
+  showToast("WASD / СТРІЛКИ — РУХ · SPACE — РИВОК · БУС ПОЗАДУ!");
+  last = performance.now();
+  scheduleLoop();
 }
-function drawCar(car,t){let bob=Math.sin(t*2+car.phase)*1.5;ctx.save();ctx.translate(car.x,car.y+bob);ctx.rotate(car.horizontal?0:Math.PI/2);ctx.fillStyle='#0005';rounded(ctx,-29,-13,62,32,9);ctx.fillStyle=car.color;rounded(ctx,-32,-16,64,30,8);ctx.fillStyle='#283940';rounded(ctx,-14,-12,28,22,6);ctx.fillStyle='#9fcac5';ctx.fillRect(-10,-10,20,7);ctx.fillStyle='#313841';ctx.fillRect(-28,-20,12,5);ctx.fillRect(16,-20,12,5);ctx.fillRect(-28,15,12,5);ctx.fillRect(16,15,12,5);ctx.fillStyle='#fff1be';ctx.fillRect(28,-11,3,5);ctx.fillRect(28,7,3,5);ctx.restore()}
-function drawDelivery(d,i,t){if(!d||d.done)return;const pulse=1+Math.sin(t*3+i)*.08;ctx.save();ctx.translate(d.x,d.y);ctx.fillStyle=d.color+'24';ctx.beginPath();ctx.arc(0,0,77*pulse,0,Math.PI*2);ctx.fill();ctx.strokeStyle=d.color;ctx.globalAlpha=.45+.4*Math.sin(t*4+i);ctx.lineWidth=4;ctx.beginPath();ctx.arc(0,0,55*pulse,0,Math.PI*2);ctx.stroke();ctx.globalAlpha=1;ctx.fillStyle='#17232d';rounded(ctx,-91,-43,182,85,10);ctx.fillStyle='#fff';rounded(ctx,-87,-39,174,77,8);const logo=logos[d.brand];if(logo?.complete&&logo.naturalWidth){if(d.brand==='meest')ctx.drawImage(logo,39,139,357,140,-72,-33,144,54);else{const ratio=Math.min(162/logo.width,43/logo.height),w=logo.width*ratio,h=logo.height*ratio;ctx.drawImage(logo,-w/2,-28,w,h)}}else{ctx.fillStyle=d.color;ctx.font='bold 16px Arial,sans-serif';ctx.textAlign='center';ctx.fillText(d.name,0,-6)}ctx.fillStyle='#53636a';ctx.font='bold 10px Arial,sans-serif';ctx.textAlign='center';ctx.fillText(d.sub,0,27);ctx.fillStyle='#17202b';ctx.beginPath();ctx.arc(-78,42,6,0,Math.PI*2);ctx.arc(78,42,6,0,Math.PI*2);ctx.fill();ctx.fillStyle='#f7d78b';ctx.beginPath();ctx.moveTo(0,-56);ctx.lineTo(-9,-70);ctx.lineTo(-3,-70);ctx.lineTo(-3,-86);ctx.lineTo(3,-86);ctx.lineTo(3,-70);ctx.lineTo(9,-70);ctx.closePath();ctx.fill();ctx.restore()}function drawPlayer(t){ctx.save();ctx.translate(player.x,player.y);ctx.rotate(player.dir+Math.PI/2);ctx.scale(stage===3?.7:.62,stage===3?.7:.62);if(player.boost>0){ctx.globalAlpha=.72;ctx.fillStyle='#65f1dc';for(let i=0;i<4;i++){ctx.beginPath();ctx.ellipse(0,42+i*8,9-i,14,0,0,Math.PI*2);ctx.fill()}ctx.globalAlpha=1}
-ctx.fillStyle='#0008';ctx.beginPath();ctx.ellipse(2,9,30,47,0,0,Math.PI*2);ctx.fill();ctx.fillStyle='#101820';ctx.beginPath();ctx.ellipse(0,-47,13,16,0,0,Math.PI*2);ctx.ellipse(0,46,13,16,0,0,Math.PI*2);ctx.fill();ctx.strokeStyle='#d9e8e5';ctx.lineWidth=3;ctx.beginPath();ctx.ellipse(0,-47,8,10,0,0,Math.PI*2);ctx.ellipse(0,46,8,10,0,0,Math.PI*2);ctx.stroke();ctx.fillStyle='#47e5d2';ctx.beginPath();ctx.arc(0,-47,4,0,Math.PI*2);ctx.arc(0,46,4,0,Math.PI*2);ctx.fill();ctx.fillStyle='#1b3440';rounded(ctx,-13,-32,26,63,8);ctx.fillStyle='#41d8c2';rounded(ctx,-9,-29,18,57,6);ctx.fillStyle='#f6d46e';rounded(ctx,-30,-43,60,8,4);ctx.fillStyle='#202b35';rounded(ctx,-33,-44,9,10,4);rounded(ctx,24,-44,9,10,4);ctx.strokeStyle='#defff7';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(0,-39);ctx.lineTo(0,-29);ctx.stroke();ctx.fillStyle='#17232d';rounded(ctx,-14,8,11,21,4);rounded(ctx,3,8,11,21,4);ctx.fillStyle='#f2c974';rounded(ctx,-16,23,14,7,3);rounded(ctx,2,23,14,7,3);ctx.fillStyle='#e57948';rounded(ctx,-15,-7,30,26,9);ctx.fillStyle='#263d49';rounded(ctx,-13,-3,26,20,6);ctx.fillStyle='#eebf64';rounded(ctx,-11,0,22,15,4);ctx.fillStyle='#f5e0a0';ctx.fillRect(-2,0,4,15);ctx.strokeStyle='#f8c49b';ctx.lineWidth=7;ctx.lineCap='round';ctx.beginPath();ctx.moveTo(-11,-1);ctx.lineTo(-21,-13);ctx.lineTo(-27,-39);ctx.moveTo(11,-1);ctx.lineTo(21,-13);ctx.lineTo(27,-39);ctx.stroke();ctx.fillStyle='#ffe28d';ctx.beginPath();ctx.arc(-27,-40,4,0,Math.PI*2);ctx.arc(27,-40,4,0,Math.PI*2);ctx.fill();ctx.fillStyle='#f0a845';ctx.beginPath();ctx.arc(0,-21,14,0,Math.PI*2);ctx.fill();ctx.fillStyle='#253b45';rounded(ctx,-11,-25,22,10,5);ctx.fillStyle='#a8f4ed';rounded(ctx,-7,-22,14,4,2);ctx.restore();if(player.bump>0){ctx.save();ctx.globalAlpha=Math.min(1,player.bump*2);ctx.fillStyle='#fff1a6';ctx.font='bold 16px Arial,sans-serif';ctx.textAlign='center';ctx.fillText('ОЙ!',player.x+25,player.y-26);ctx.restore()}}
-function spawnCafeOrder(index){if(cafeOrders[index])return;const available=cafeMenu.filter(item=>!cafeOrders.some(order=>order&&order.items.includes(item.id)));const pool=available.length>=2?available:cafeMenu;const shuffled=[...pool].sort(()=>Math.random()-.5),count=Math.random()<.62?1:2,orderNumber=++cafeOrdersCreated;cafeOrders[index]={items:shuffled.slice(0,count).map(item=>item.id),patience:78,orderNumber}}
-function cafeInteract(){if(cafeActionCooldown>0)return;cafeActionCooldown=.24;let station=null,stationDist=1e9;for(const item of cafeMenu){const d=Math.hypot(player.x-item.x,player.y-650);if(d<stationDist){station=item;stationDist=d}}let table=-1,tableDist=1e9;for(let i=0;i<cafeTables.length;i++){const p=cafeTables[i],d=Math.hypot(player.x-p.x,player.y-p.y);if(d<tableDist){table=i;tableDist=d}}if(!heldDish){if(station&&stationDist<92){heldDish=station.id;showToast(`ВЗЯТО: ${station.name.toUpperCase()} · НЕСИ ДО СТОЛИКА`);tone(480,.08,'triangle',.035,90)}else showToast('ПІДІЙДИ ДО КУХОННОЇ СТАНЦІЇ');return}if(table>=0&&tableDist<92){const order=cafeOrders[table];if(!order){showToast('ЗА ЦИМ СТОЛИКОМ ПОКИ НЕМАЄ ЗАМОВЛЕННЯ');return}const index=order.items.indexOf(heldDish),dish=cafeMenu.find(item=>item.id===heldDish);if(index<0){score=Math.max(0,score-25);heldDish=null;showToast('НЕ ТЕ ЗАМОВЛЕННЯ — СТРАВУ ПОВЕРНУТО НА КУХНЮ');tone(170,.12,'square',.025,-50);return}order.items.splice(index,1);heldDish=null;score+=100;chime();if(order.items.length===0){cafeServed++;score+=200+Math.round(order.patience*2);cafeOrders[table]=null;document.getElementById('delivered').textContent=`${cafeServed} / 10`;showToast(`СТОЛИК ${table+1} ОБСЛУЖЕНО! · ${cafeServed} / 10`);if(cafeServed>=10){finish(true);return}spawnCafeOrder(table)}else showToast(`СМАЧНО! ЩЕ ${order.items.length} ПОЗИЦІЯ У ЗАМОВЛЕННІ`);return}const dish=cafeMenu.find(item=>item.id===heldDish);showToast(`ПІДІЙДИ ДО СТОЛИКА З ${dish.name.toUpperCase()}`)}
-function updateCafe(dt){const {x:dx,y:dy}=movementAxes();const baseSpeed=405,targetVx=dx*baseSpeed,targetVy=dy*baseSpeed,responsiveness=dx||dy?19:22;player.vx+=(targetVx-player.vx)*Math.min(1,dt*responsiveness);player.vy+=(targetVy-player.vy)*Math.min(1,dt*responsiveness);if(dx||dy)player.dir=Math.atan2(player.vy,player.vx);if(boostPressed){boostPressed=false;if(player.boostCd<=0){player.boost=.5;player.boostCd=2;const n=Math.hypot(player.vx,player.vy)||1;player.vx+=player.vx/n*265;player.vy+=player.vy/n*265;tone(290,.1,'sawtooth',.025,210)}}player.boostCd=Math.max(0,player.boostCd-dt);player.boost=Math.max(0,player.boost-dt);const max=player.boost>0?500:baseSpeed,sp=Math.hypot(player.vx,player.vy);if(sp>max){player.vx=player.vx/sp*max;player.vy=player.vy/sp*max}const blocked=(x,y)=>cafeTables.some(p=>{const ox=(x-p.x)/84,oy=(y-p.y)/58;return ox*ox+oy*oy<1});const nextX=clamp(player.x+player.vx*dt,70,W-70),nextY=clamp(player.y+player.vy*dt,145,730);if(!blocked(nextX,player.y))player.x=nextX;else player.vx=0;if(!blocked(player.x,nextY))player.y=nextY;else player.vy=0;cafeActionCooldown=Math.max(0,cafeActionCooldown-dt);for(let i=0;i<cafeOrders.length;i++){const order=cafeOrders[i];if(!order)continue;order.patience=Math.max(0,order.patience-dt);if(order.patience<=0){cafeOrders[i]=null;score=Math.max(0,score-60);spawnCafeOrder(i);showToast(`СТОЛИК ${i+1} ВТРАТИВ ТЕРПІННЯ · НОВЕ ЗАМОВЛЕННЯ`);tone(155,.12,'square',.02,-45)}}if(interactPressed){interactPressed=false;cafeInteract()}document.getElementById('delivered').textContent=`${cafeServed} / 10`;document.getElementById('score').textContent=String(score).padStart(4,'0');document.getElementById('timer').textContent=formatTime(time);if(toastTimer>0){toastTimer-=dt;if(toastTimer<=0)document.getElementById('toast').classList.remove('show')}}function drawFoodIcon(c,id,x,y,size){c.save();c.translate(x,y);c.scale(size/40,size/40);c.lineJoin='round';if(id==='syrnyky'){for(const [dx,dy,r] of [[-10,3,10],[9,2,10],[0,-8,10]]){c.fillStyle='#9c5b2c';c.beginPath();c.arc(dx,dy,r+1,0,Math.PI*2);c.fill();c.fillStyle='#f1bd61';c.beginPath();c.arc(dx,dy,r,0,Math.PI*2);c.fill();c.fillStyle='#ffdf91';c.beginPath();c.arc(dx-2,dy-2,r*.55,0,Math.PI*2);c.fill();c.fillStyle='#fff1c6';c.beginPath();c.arc(dx+2,dy+2,1.5,0,Math.PI*2);c.fill()}}
-else if(id==='pizza'){c.fillStyle='#9a492f';c.beginPath();c.roundRect(-18,-18,36,36,3);c.fill();c.fillStyle='#e8a743';c.beginPath();c.roundRect(-15,-15,30,30,2);c.fill();c.fillStyle='#cf493a';c.beginPath();c.roundRect(-11,-11,22,22,2);c.fill();c.fillStyle='#f2cb68';c.beginPath();c.roundRect(-8,-8,16,16,2);c.fill();for(const [dx,dy] of [[-5,-4],[4,-5],[-4,5],[5,4]]){c.fillStyle='#a9443b';c.beginPath();c.arc(dx,dy,2.5,0,Math.PI*2);c.fill()}c.fillStyle='#5c914e';c.beginPath();c.ellipse(0,0,2,4,.7,0,Math.PI*2);c.fill()}
-else if(id==='condensed'){c.fillStyle='#f4f3df';c.beginPath();c.roundRect(-14,-15,28,30,5);c.fill();c.fillStyle='#278cae';c.beginPath();c.roundRect(-13,-8,26,17,3);c.fill();c.fillStyle='#f2cd5e';c.fillRect(-13,-12,26,4);c.fillStyle='#fff';c.font='bold 5px Arial,sans-serif';c.textAlign='center';c.fillText('КУП’ЯНСЬКЕ',0,0);c.fillStyle='#bc4b7b';c.beginPath();c.ellipse(0,7,7,5,0,0,Math.PI*2);c.fill();c.fillStyle='#f6e8dc';c.beginPath();c.arc(0,5,3.5,0,Math.PI*2);c.fill();c.beginPath();c.ellipse(-2,1,1.3,4,-.2,0,Math.PI*2);c.ellipse(2,1,1.3,4,.2,0,Math.PI*2);c.fill();c.fillStyle='#4a3840';c.fillRect(-1,5,1,1);c.fillRect(2,5,1,1)}else if(id==='sandwich'){c.fillStyle='#9b5b34';c.beginPath();c.moveTo(-18,8);c.lineTo(-12,-8);c.quadraticCurveTo(0,-20,12,-8);c.lineTo(18,8);c.closePath();c.fill();c.fillStyle='#f0d18b';c.fillRect(-16,5,32,5);c.fillStyle='#8d4431';c.fillRect(-14,-2,28,8);c.fillStyle='#65a65e';c.fillRect(-13,-6,26,4)}else if(id==='pelmeni'){if(ermolinoLogo.complete&&ermolinoLogo.naturalWidth){c.fillStyle='#fff';c.beginPath();c.arc(0,0,19,0,Math.PI*2);c.fill();const pad=2;c.drawImage(ermolinoLogo,-20+pad,-20+pad,36,36)}else{c.fillStyle='#fff';c.font='bold 7px Arial,sans-serif';c.textAlign='center';c.textBaseline='middle';c.fillText('ЄРМОЛІНО',0,0)}}c.restore()}
-function drawVrGuest(p,i,t,o=null){const shirts=['#6f84bd','#cb745a','#779b75','#b37ca1','#4f9a9b','#b28c51'],skin=['#efc795','#dca878','#f1d1aa','#c99068','#e8ba8c','#d7a174'],hair=['#322d36','#74513b','#222934','#aa7647','#5c3f34','#c5ae76'],x=p.x,y=p.y,angry=o&&o.patience<25,pulse=1+Math.sin(t*2+i)*.025,gesture=angry?Math.sin(t*12+i)*10:Math.sin(t*2+i)*3,turn=Math.sign(player.x-x)*3,c=ctx;c.save();c.fillStyle='#25343f';c.beginPath();c.ellipse(x,y+62,31,19,0,0,Math.PI*2);c.fill();c.fillStyle=shirts[i%shirts.length];c.beginPath();c.ellipse(x+Math.sin(t*1.4+i)*2,y+52,22,29,0,0,Math.PI*2);c.fill();c.strokeStyle=shirts[i%shirts.length];c.lineWidth=9;c.lineCap='round';c.beginPath();c.moveTo(x-15,y+43);c.lineTo(x-28,y+28);c.moveTo(x+15,y+43);c.lineTo(x+29,y+25+gesture);c.stroke();for(const side of [-1,1]){c.fillStyle='#203542';rounded(c,x+side*30-7,y+19,14,18,5);c.fillStyle='#53dedb';c.beginPath();c.arc(x+side*30,y+28,3,0,Math.PI*2);c.fill()}c.fillStyle=skin[i%skin.length];c.beginPath();c.arc(x+turn,y+27,18*pulse,0,Math.PI*2);c.fill();c.fillStyle=hair[i%hair.length];c.beginPath();c.arc(x+turn,y+23,18,Math.PI,Math.PI*2);c.fill();c.fillStyle='#172832';rounded(c,x-25,y+17,50,22,8);c.fill();c.strokeStyle='#526d77';c.lineWidth=2;c.beginPath();c.arc(x,y+23,25,Math.PI,Math.PI*2);c.stroke();c.fillStyle=angry?'#f48574':'#27b8c2';rounded(c,x-19,y+20,17,14,5);rounded(c,x+2,y+20,17,14,5);c.fillStyle='#bafffa';c.beginPath();c.arc(x-10.5,y+27,4,0,Math.PI*2);c.arc(x+10.5,y+27,4,0,Math.PI*2);c.fill();c.fillStyle='#152631';c.beginPath();c.arc(x,y+27,2.5,0,Math.PI*2);c.fill();c.fillStyle='#d5ffff';c.font='bold 7px Arial,sans-serif';c.textAlign='center';c.fillText('VR',x,y+16);if(angry){c.fillStyle='#fff4db';rounded(c,x-23,y-14,46,20,8);c.fillStyle='#c14d4c';c.font='bold 14px Arial';c.fillText('…',x,y+1)}c.restore()}function drawCafeAvatar(t){ctx.save();ctx.translate(player.x,player.y);ctx.rotate(player.dir+Math.PI/2);ctx.fillStyle='#0006';ctx.beginPath();ctx.ellipse(3,12,26,16,0,0,Math.PI*2);ctx.fill();ctx.fillStyle='#283c4b';ctx.beginPath();ctx.ellipse(0,3,14,23,0,0,Math.PI*2);ctx.fill();ctx.fillStyle='#49cbb8';rounded(ctx,-13,-12,26,23,8);ctx.fillStyle='#f7c993';ctx.beginPath();ctx.arc(0,-18,9,0,Math.PI*2);ctx.fill();ctx.fillStyle='#3b2c2a';ctx.beginPath();ctx.arc(0,-21,9,Math.PI,Math.PI*2);ctx.fill();ctx.fillStyle='#f0d9aa';rounded(ctx,-10,3,20,7,3);ctx.restore();if(heldDish){ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(player.x+23,player.y-30,23,0,Math.PI*2);ctx.fill();ctx.strokeStyle='#38505a';ctx.lineWidth=2;ctx.stroke();drawFoodIcon(ctx,heldDish,player.x+23,player.y-30,34)}}
-function drawCafe(t){ctx.clearRect(0,0,W,H);ctx.fillStyle='#a98866';ctx.fillRect(0,0,W,H);for(let y=0;y<H;y+=64)for(let x=0;x<W;x+=64){ctx.fillStyle=((x/64+y/64)%2===0)?'#e2d2b2':'#d4c19e';ctx.fillRect(x,y,62,62)}ctx.fillStyle='#293c48';ctx.fillRect(0,0,W,136);ctx.fillStyle='#172a35';ctx.fillRect(0,132,W,15);ctx.fillStyle='#f7e6c4';ctx.font='900 29px Arial,sans-serif';ctx.textAlign='center';ctx.textBaseline='alphabetic';ctx.fillText('VR-КАФЕ «СМІЛА»',W/2,61);ctx.font='bold 14px Arial,sans-serif';ctx.fillStyle='#72f0dc';ctx.fillText('ЗАМОВЛЕННЯ Є. РЕАЛЬНІСТЬ — ЗА БАЖАННЯМ.',W/2,92);ctx.fillStyle='#f4cb7a';ctx.font='bold 12px Arial,sans-serif';ctx.fillText('ГОСТІ У VR · КУХНЯ ПРАЦЮЄ НАСПРАВДІ',W/2,118);
- for(let x=70;x<250;x+=90){ctx.fillStyle='#68a4b0';rounded(ctx,x,30,66,75,8);ctx.fillStyle='#d8eee2';ctx.fillRect(x+7,38,52,4);ctx.fillStyle='#34464c';ctx.fillRect(x+31,30,4,75)}
- for(let i=0;i<cafeTables.length;i++){const p=cafeTables[i],o=cafeOrders[i];ctx.fillStyle='#34464d';for(const [dx,dy] of [[-63,-33],[63,-33],[-63,33],[63,33]]){ctx.beginPath();ctx.arc(p.x+dx,p.y+dy,14,0,Math.PI*2);ctx.fill()}ctx.fillStyle='#0004';ctx.beginPath();ctx.ellipse(p.x+4,p.y+9,83,57,0,0,Math.PI*2);ctx.fill();ctx.fillStyle='#714a36';ctx.beginPath();ctx.ellipse(p.x,p.y+1,80,54,0,0,Math.PI*2);ctx.fill();ctx.fillStyle='#bd8a60';ctx.beginPath();ctx.ellipse(p.x,p.y-4,76,49,0,0,Math.PI*2);ctx.fill();ctx.strokeStyle='#eed0a1';ctx.lineWidth=2;ctx.beginPath();ctx.ellipse(p.x,p.y-4,67,41,0,0,Math.PI*2);ctx.stroke();ctx.fillStyle='#f1d7a6';ctx.font='bold 14px Arial,sans-serif';ctx.textAlign='center';ctx.fillText(`СТІЛ ${i+1}`,p.x,p.y+1);drawVrGuest(p,i,t,o);
- if(o){const by=p.y-127;ctx.fillStyle='#152732';rounded(ctx,p.x-94,by-3,188,100,11);ctx.fillStyle='#fffdf5';rounded(ctx,p.x-90,by,180,94,8);ctx.fillStyle='#223641';ctx.font='bold 15px Arial,sans-serif';ctx.fillText(`ЗАМОВЛЕННЯ №${o.orderNumber}`,p.x,by+17);o.items.forEach((id,j)=>{const x=p.x+(j-(o.items.length-1)/2)*78;drawFoodIcon(ctx,id,x,by+40,28);ctx.fillStyle='#182b33';ctx.font='bold 12px Arial,sans-serif';const label=id==='pelmeni'?'Пельмені Єрмоліно':cafeMenu.find(m=>m.id===id).name;if(label==='Куп’янська згущонка'){ctx.fillText('Куп’янська',x,by+59);ctx.fillText('згущонка',x,by+72)}else if(label==='Бутерброд зі свининою'){ctx.fillText('Бутерброд',x,by+59);ctx.fillText('зі свининою',x,by+72)}else if(label==='Квадратна піца'){ctx.fillText('Квадратна',x,by+59);ctx.fillText('піца',x,by+72)}else if(label==='Пельмені Єрмоліно'){ctx.fillText('Пельмені',x,by+59);ctx.fillText('Єрмоліно',x,by+72)}else ctx.fillText(label,x,by+65)});ctx.fillStyle='#d7ded8';rounded(ctx,p.x-63,by+86,126,6,3);ctx.fillStyle=o.patience>30?'#28a978':'#d94141';rounded(ctx,p.x-63,by+86,126*o.patience/78,6,3)}}
- ctx.fillStyle='#243942';rounded(ctx,62,610,1156,119,17);ctx.fillStyle='#76543d';rounded(ctx,70,617,1140,104,14);for(const s of cafeMenu){const nearStation=Math.hypot(player.x-s.x,player.y-650)<94;ctx.fillStyle=nearStation?'#fff0be':'#f3e4cc';rounded(ctx,s.x-78,623,156,90,12);ctx.fillStyle=s.c;rounded(ctx,s.x-73,628,146,80,9);ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(s.x,642,23,0,Math.PI*2);ctx.fill();ctx.strokeStyle='#263b42';ctx.lineWidth=2;ctx.stroke();drawFoodIcon(ctx,s.id,s.x,642,s.id==='pelmeni'?48:38);ctx.fillStyle='#fff';ctx.font='bold 12px Arial,sans-serif';ctx.textAlign='center';if(s.id==='pelmeni'){ctx.fillText('ЄРМОЛІНО',s.x,685)}else if(s.id==='condensed'){ctx.font='bold 10px Arial,sans-serif';ctx.fillText('КУП’ЯНСЬКА',s.x,673);ctx.fillText('ЗГУЩОНКА',s.x,685)}else if(s.id==='sandwich'){ctx.font='bold 10px Arial,sans-serif';ctx.fillText('БУТЕРБРОД',s.x,673);ctx.fillText('ЗІ СВИНИНОЮ',s.x,685)}else ctx.fillText(s.name,s.x,685);ctx.fillStyle='#182b33';rounded(ctx,s.x-48,690,96,20,6);ctx.fillStyle='#fff';ctx.font='bold 12px Arial,sans-serif';ctx.fillText('E · ВЗЯТИ',s.x,704)}
- ctx.fillStyle='#233740';ctx.fillRect(0,740,W,60);ctx.fillStyle='#fff3da';ctx.font='bold 15px Arial,sans-serif';ctx.textAlign='center';ctx.fillText('',W/2,778);drawCafeAvatar(t)}function drawCafeDestination(t){const x=cafeDestination.x,y=cafeDestination.y,pulse=1+Math.sin(t*4)*.1;ctx.save();ctx.translate(x,y);ctx.fillStyle='#39edb733';ctx.beginPath();ctx.arc(0,0,88*pulse,0,Math.PI*2);ctx.fill();ctx.strokeStyle='#39edb7';ctx.lineWidth=5;ctx.beginPath();ctx.arc(0,0,60*pulse,0,Math.PI*2);ctx.stroke();ctx.fillStyle='#172a35';rounded(ctx,-61,-44,122,78,10);ctx.fillStyle='#58d4b7';rounded(ctx,-54,-37,108,64,7);ctx.fillStyle='#fff6d7';ctx.fillRect(-39,-22,78,4);ctx.fillStyle='#172a35';ctx.font='900 21px Arial,sans-serif';ctx.textAlign='center';ctx.fillText('VR',0,3);ctx.font='bold 13px Arial,sans-serif';ctx.fillText('КАФЕ',0,21);ctx.fillStyle='#fff';rounded(ctx,-92,-81,184,25,8);ctx.fillStyle='#13232c';ctx.font='bold 13px Arial,sans-serif';ctx.fillText('НА ЗМІНУ →',0,-64);ctx.restore()}
-function drawNeonCity(t){const minX=buildingBackdrop?0:player.x-W*.65,maxX=buildingBackdrop?world.w:player.x+W*.65,minY=buildingBackdrop?0:player.y-H*.65,maxY=buildingBackdrop?world.h:player.y+H*.65;ctx.save();for(const x of roadsX){if(x<minX||x>maxX)continue;for(const y of roadsY){if(y<minY||y>maxY)continue;const lx=x+roadW/2-36,ly=y+roadW/2-42;ctx.strokeStyle='#44484a';ctx.lineWidth=5;ctx.beginPath();ctx.moveTo(lx,ly+20);ctx.lineTo(lx,ly-42);ctx.lineTo(lx-21,ly-52);ctx.stroke();ctx.fillStyle='#f6d28b';rounded(ctx,lx-29,ly-57,20,9,4)}}ctx.restore();for(let i=0;i<18;i++){const x=160+(i*173)%world.w,y=120+(i*277)%world.h;if(x<minX||x>maxX||y<minY||y>maxY||roadsX.some(r=>Math.abs(x-r)<roadW*.8)||roadsY.some(r=>Math.abs(y-r)<roadW*.8))continue;ctx.fillStyle='#18212b';rounded(ctx,x-38,y-24,76,48,4);for(let wx=-25;wx<=20;wx+=22)for(let wy=-12;wy<=8;wy+=20){ctx.fillStyle=((i+wx+wy)%3===0)?'#f0c77a':'#43505a';ctx.fillRect(x+wx,y+wy,9,8)}}}
-function buildChaseBackdrop(){if(chaseBackdrop)return;const back=document.createElement('canvas');back.width=world.w;back.height=world.h;const screenCtx=ctx,oldStage=stage;try{ctx=back.getContext('2d',{alpha:false});stage=3;buildingBackdrop=true;drawGround();drawScenery(0);drawDistrict();drawSmilaLandmarks(0);drawNeonCity(0);for(const x of roadsX)for(const y of roadsY){ctx.fillStyle='#d0c1a0';ctx.beginPath();ctx.arc(x,y,13,0,Math.PI*2);ctx.fill();ctx.fillStyle='#6d8a69';ctx.beginPath();ctx.arc(x,y,8,0,Math.PI*2);ctx.fill()}chaseBackdrop=back}catch(err){console.warn('Night city cache unavailable; using live rendering.',err)}finally{ctx=screenCtx;stage=oldStage;buildingBackdrop=false}}
-function drawChaseWorld(t){ctx.clearRect(0,0,W,H);ctx.fillStyle='#10171b';ctx.fillRect(0,0,W,H);const tx=W/2-player.x,ty=H/2-player.y;ctx.drawImage(chaseBackdrop,tx,ty);ctx.save();ctx.translate(tx,ty);for(const car of cars)if(car.x>player.x-W*.65&&car.x<player.x+W*.65&&car.y>player.y-H*.65&&car.y<player.y+H*.65)drawCar(car,t);for(const pedestrian of pedestrians)if(pedestrian.x>player.x-W*.65&&pedestrian.x<player.x+W*.65&&pedestrian.y>player.y-H*.65&&pedestrian.y<player.y+H*.65)drawPedestrian(pedestrian,t);deliveries.forEach((d,i)=>drawDelivery(d,i,t));if(courierToCafe)drawCafeDestination(t);if(chaseMarkerActive)drawSafeMarker(t);drawChaseVan(t);drawPlayer(t);ctx.restore();drawNightOverlay(t)}
-function drawNightOverlay(t){const draw=drawNightOverlay;let sprite=draw.glow;if(!sprite){sprite=document.createElement('canvas');sprite.width=160;sprite.height=160;const gctx=sprite.getContext('2d'),g=gctx.createRadialGradient(80,80,2,80,80,78);g.addColorStop(0,'rgba(255,209,132,.28)');g.addColorStop(.38,'rgba(255,197,115,.12)');g.addColorStop(1,'rgba(255,185,90,0)');gctx.fillStyle=g;gctx.fillRect(0,0,160,160);draw.glow=sprite}ctx.save();ctx.globalCompositeOperation='screen';for(const x of roadsX){const sx=W/2+x-player.x+roadW/2;if(sx<-100||sx>W+100)continue;for(const y of roadsY){const sy=H/2+y-player.y+roadW/2;if(sy<-100||sy>H+100)continue;ctx.drawImage(sprite,sx-roadW*.18-80,sy-roadW*.18-80,160,160);ctx.drawImage(sprite,sx+roadW*.18-80,sy+roadW*.18-80,160,160)}}const vx=W/2+chaseVan.x-player.x,vy=H/2+chaseVan.y-player.y;ctx.drawImage(sprite,vx-80,vy-80,160,160);ctx.restore()}
-function drawSafeMarker(t){const x=chaseDestination.x,y=chaseDestination.y,p=1+Math.sin(t*5)*.12;ctx.save();ctx.translate(x,y);ctx.fillStyle='#55e7b933';ctx.beginPath();ctx.arc(0,0,88*p,0,Math.PI*2);ctx.fill();ctx.strokeStyle='#54edb8';ctx.lineWidth=5;ctx.beginPath();ctx.arc(0,0,60*p,0,Math.PI*2);ctx.stroke();ctx.fillStyle='#0d2927';rounded(ctx,-92,-54,184,91,12);ctx.fillStyle='#5be4b2';rounded(ctx,-85,-47,170,77,9);ctx.fillStyle='#12302c';ctx.font='900 19px Arial,sans-serif';ctx.textAlign='center';ctx.fillText('БЕЗПЕЧНЕ',0,-14);ctx.fillText('МІСЦЕ',0,10);ctx.font='bold 11px Arial,sans-serif';ctx.fillText('МАРШРУТ ВІДКРИТО',0,28);ctx.restore()}
-function drawChaseVan(t){ctx.save();ctx.translate(chaseVan.x,chaseVan.y+Math.sin(t*8)*1.5);ctx.rotate(Math.atan2(chaseVan.vy,chaseVan.vx)+Math.PI/2);ctx.scale(.76,.76);ctx.fillStyle='#0007';rounded(ctx,-40,-65,80,132,18);ctx.fillStyle='#465142';rounded(ctx,-38,-67,76,132,17);ctx.fillStyle='#65704f';rounded(ctx,-32,-60,64,114,13);ctx.fillStyle='#17232a';rounded(ctx,-27,-46,54,35,8);ctx.fillStyle='#a9d7ce';rounded(ctx,-22,-41,44,24,5);ctx.fillStyle='#25302c';rounded(ctx,-26,2,52,37,8);ctx.fillStyle='#b9c2ad';ctx.font='900 16px Arial,sans-serif';ctx.textAlign='center';ctx.fillText('ТЦК',0,23);ctx.fillStyle='#f6df8a';ctx.fillRect(-29,-65,14,5);ctx.fillRect(15,-65,14,5);ctx.fillStyle='#fff2c1';ctx.fillRect(-28,-61,12,3);ctx.fillRect(16,-61,12,3);ctx.fillStyle='#171d22';rounded(ctx,-43,-43,7,29,3);rounded(ctx,36,-43,7,29,3);rounded(ctx,-43,33,7,29,3);rounded(ctx,36,33,7,29,3);ctx.restore()}
-function drawTrainingStage(t){if(trainingPhase==='field'){drawCornfield(t);return}if(trainingPhase==='escape'){drawEscapeTransition(t);return}ctx.clearRect(0,0,W,H);const bg=ctx.createLinearGradient(0,0,0,H);bg.addColorStop(0,'#cbd0b9');bg.addColorStop(.5,'#aeb7a2');bg.addColorStop(1,'#828f7e');ctx.fillStyle=bg;ctx.fillRect(0,0,W,H);for(let y=128;y<H;y+=48)for(let x=16;x<W;x+=48){ctx.fillStyle=((x/48+y/48)%2)?'#c7c6ad':'#b7bea8';ctx.fillRect(x,y,45,45)}ctx.fillStyle='#46504b';ctx.fillRect(20,118,W-40,14);ctx.fillRect(20,H-18,W-40,14);ctx.fillRect(20,118,14,H-136);ctx.fillRect(W-34,118,14,H-136);ctx.fillStyle='#66766e';rounded(ctx,92,500,240,115,12);ctx.fillStyle='#dce5d9';rounded(ctx,112,520,200,63,18);ctx.fillStyle='#9fb4a6';ctx.beginPath();ctx.ellipse(210,551,49,19,0,0,Math.PI*2);ctx.fill();ctx.strokeStyle='#6f8278';ctx.lineWidth=5;ctx.beginPath();ctx.moveTo(210,516);ctx.lineTo(210,535);ctx.stroke();ctx.beginPath();ctx.arc(211,519,12,Math.PI,Math.PI*2);ctx.stroke();ctx.fillStyle='#35423c';ctx.fillRect(112,592,200,8);ctx.fillStyle='#eee2c1';ctx.font='bold 11px Arial';ctx.textAlign='center';ctx.fillText('РАКОВИНА',212,632);for(let i=0;i<toiletStalls.length;i++){const q=toiletStalls[i],x=q.x;ctx.fillStyle='#61716c';ctx.fillRect(x-112,235,8,166);ctx.fillRect(x+104,235,8,166);ctx.fillStyle='#89998c';ctx.fillRect(x-108,236,212,7);ctx.fillStyle='#45514d';rounded(ctx,x-54,280,108,98,15);ctx.fillStyle=q.occupied?'#b9a477':q.progress>=.995?'#e5e9d8':'#ddd3b8';ctx.beginPath();ctx.ellipse(x,332,38,28,0,0,Math.PI*2);ctx.fill();ctx.fillStyle=q.occupied?'#82907d':q.progress>=.995?'#a6d9b6':'#8c7353';ctx.beginPath();ctx.ellipse(x,332,23,15,0,0,Math.PI*2);ctx.fill();ctx.fillStyle='#596a64';rounded(ctx,x-26,291,52,15,6);ctx.fillStyle='#182322';rounded(ctx,x-62,255,124,22,6);ctx.fillStyle=q.occupied?'#f3d37e':q.progress>=.995?'#9ce0b9':'#e4ac76';ctx.font='bold 11px Arial';ctx.textAlign='center';ctx.fillText(q.occupied?'ЗАЙНЯТО':q.progress>=.995?'ЧИСТО':'БРУДНО',x,270);ctx.fillStyle='#293431';rounded(ctx,x-48,373,96,9,4);ctx.fillStyle=q.progress>=.995?'#55c49a':'#d79463';rounded(ctx,x-46,375,92*q.progress,5,3);if(q.mess){ctx.fillStyle='#9b7048';ctx.beginPath();ctx.ellipse(x,319,14,6,0,0,Math.PI*2);ctx.arc(x-7,314,6,0,Math.PI*2);ctx.arc(x+3,310,7,0,Math.PI*2);ctx.arc(x+9,316,5,0,Math.PI*2);ctx.fill();ctx.fillStyle='#fff0d1';ctx.beginPath();ctx.arc(x-3,311,1.5,0,Math.PI*2);ctx.arc(x+4,311,1.5,0,Math.PI*2);ctx.fill()}}ctx.fillStyle='#25312e';rounded(ctx,1100,120,105,14,5);ctx.fillStyle='#55655e';rounded(ctx,1108,134,89,59,7);ctx.fillStyle=trainingPhase==='leave'?'#49bf91':'#db9861';ctx.beginPath();ctx.arc(1180,163,5,0,Math.PI*2);ctx.fill();ctx.fillStyle='#1d2925';ctx.font='bold 10px Arial';ctx.textAlign='center';ctx.fillText(trainingPhase==='leave'?'ВИХІД':'СЛУЖБОВІ ДВЕРІ',1152,207);if(!trainingBrush){ctx.fillStyle='#53635a';rounded(ctx,toothbrush.x-35,toothbrush.y+20,70,18,5);ctx.fillStyle='#c5b890';rounded(ctx,toothbrush.x-30,toothbrush.y+14,60,8,3);ctx.fillStyle='#e7dfc7';ctx.font='bold 9px Arial';ctx.textAlign='center';ctx.fillText('ТРИМАЧ ЩІТКИ',toothbrush.x,toothbrush.y+55);ctx.save();ctx.translate(toothbrush.x,toothbrush.y+Math.sin(t*4)*3);ctx.rotate(-.55);ctx.fillStyle='#e9c34e';rounded(ctx,-7,-28,14,54,6);ctx.fillStyle='#69d5c8';rounded(ctx,-7,-32,14,12,4);ctx.fillStyle='#fff';for(let k=0;k<5;k++)ctx.fillRect(-5+k*2.5,-35,2,4);ctx.restore();ctx.fillStyle='#162321';rounded(ctx,toothbrush.x-58,toothbrush.y-58,116,22,6);ctx.fillStyle='#fff';ctx.font='bold 10px Arial';ctx.textAlign='center';ctx.fillText('ЗУБНА ЩІТКА · E',toothbrush.x,toothbrush.y-43)}if(trainingBrush&&(trainingPhase==='brush_teeth'||trainingPhase==='clean')){ctx.save();ctx.translate(player.x+18,player.y-12);ctx.rotate(-.72);ctx.fillStyle='#e9c34e';rounded(ctx,-4,-18,8,36,4);ctx.fillStyle='#69d5c8';rounded(ctx,-5,-22,10,7,3);ctx.fillStyle='#fff';for(let k=0;k<4;k++)ctx.fillRect(-4+k*2.4,-25,2,4);ctx.restore()}if(trainingBrush&&trainingPhase==='brush_teeth'){ctx.fillStyle='#effff1';ctx.font='bold 18px Arial';ctx.textAlign='center';for(let k=0;k<6;k++){const a=t*2+k*Math.PI/3;ctx.fillText('✦',player.x+Math.cos(a)*27,player.y-34+Math.sin(a)*15)}}for(const g of toiletGuests){if(g.state==='using'){ctx.fillStyle='#6f7d69';rounded(ctx,g.target.x-39,g.target.y-73,78,73,8);ctx.strokeStyle='#c6b989';ctx.lineWidth=3;ctx.strokeRect(g.target.x-39,g.target.y-73,78,73);ctx.fillStyle='#e5d6ae';ctx.font='bold 9px Arial';ctx.textAlign='center';ctx.fillText('ЗАЙНЯТО',g.target.x,g.target.y-54);ctx.fillStyle='#18231f';rounded(ctx,g.target.x-28,g.target.y-42,56,6,3);ctx.fillStyle='#e3bd69';rounded(ctx,g.target.x-26,g.target.y-40,52*Math.max(0,g.timer/3.7),2,1);ctx.fillStyle='#e9d7b0';const wiggle=Math.sin(t*13)*3;ctx.fillRect(g.target.x-13+wiggle,g.target.y-8,9,8);ctx.fillRect(g.target.x+4-wiggle,g.target.y-8,9,8)}else{drawTrainingSoldier(g.x,g.y,'#71815f');ctx.fillStyle='#15221fdd';rounded(ctx,g.x-44,g.y-53,88,19,5);ctx.fillStyle='#fff';ctx.font='bold 9px Arial';ctx.textAlign='center';ctx.fillText('ЗАРАЗ БУДЕ ЧЕРГА',g.x,g.y-40)}}drawTrainingAvatar(player.x,player.y,t);ctx.fillStyle='#101923eF';rounded(ctx,18,14,252,48,9);ctx.fillStyle='#f4e7ca';ctx.font='bold 13px Arial';ctx.textAlign='left';ctx.fillText('04A · ЩІТКА → 3 КАБІНКИ',30,34);ctx.fillStyle='#d8e1d5';ctx.font='bold 11px Arial';const cleanN=toiletStalls.filter(q=>q.progress>=.995).length;ctx.fillText(`${trainingPhase==='brush_pickup'?'1 · ВЗЯТИ ЩІТКУ':trainingPhase==='brush_teeth'?'2 · ПОЧИСТИТИ ЗУБИ':trainingPhase==='clean'?`3 · КАБІНКИ ${cleanN}/3`:trainingPhase==='return_brush'?'4 · ПОВЕРНУТИ ЩІТКУ':'5 · ВИЙТИ'}  ·  ВІЗИТИ ${toiletGuestVisits}/7`,30,51);if(trainingPhase==='brush_pickup'&&Math.hypot(player.x-toothbrush.x,player.y-toothbrush.y)<125)drawTrainingPrompt(toothbrush.x,toothbrush.y-38,'E · ВЗЯТИ');if(trainingPhase==='brush_teeth'&&Math.hypot(player.x-210,player.y-550)<180)drawTrainingPrompt(210,485,'E · ЧИСТИТИ ЗУБИ',brushProgress);if(trainingPhase==='clean'){let near=null,nd=145;for(const stall of toiletStalls){const d=Math.hypot(player.x-stall.x,player.y-stall.y);if(d<nd){near=stall;nd=d}}if(near)drawTrainingPrompt(near.x,near.y-60,near.occupied?'ЗАЙНЯТО':'E · ЧИСТИТИ',near.progress)}if(trainingPhase==='return_brush'&&Math.hypot(player.x-210,player.y-550)<145)drawTrainingPrompt(210,485,'E · ПОВЕРНУТИ');if(trainingPhase==='leave'&&Math.hypot(player.x-trainingDoor.x,player.y-trainingDoor.y)<145)drawTrainingPrompt(trainingDoor.x,230,'E · ВИХІД')}
-function drawTrainingSoldier(x,y,uniform){ctx.save();ctx.translate(x,y);ctx.fillStyle='#0005';ctx.beginPath();ctx.ellipse(0,12,23,16,0,0,Math.PI*2);ctx.fill();ctx.fillStyle='#1c292a';rounded(ctx,-13,4,10,23,4);rounded(ctx,3,4,10,23,4);ctx.fillStyle=uniform;rounded(ctx,-19,-18,38,29,9);ctx.fillStyle='#d8b28a';ctx.beginPath();ctx.arc(0,-24,14,0,Math.PI*2);ctx.fill();ctx.fillStyle='#4c5643';rounded(ctx,-16,-37,32,9,5);ctx.fillStyle='#c0a267';ctx.fillRect(-4,-33,8,3);ctx.restore()}function drawTrainingAvatar(x,y,t){ctx.save();ctx.translate(x,y+Math.sin(t*7)*1.5);ctx.fillStyle='#0006';ctx.beginPath();ctx.ellipse(3,13,24,15,0,0,Math.PI*2);ctx.fill();ctx.fillStyle='#202c36';rounded(ctx,-13,4,10,22,4);rounded(ctx,3,4,10,22,4);ctx.fillStyle='#edc573';rounded(ctx,-15,20,13,7,3);rounded(ctx,2,20,13,7,3);ctx.fillStyle='#df7548';rounded(ctx,-16,-19,32,28,9);ctx.fillStyle='#293f4c';rounded(ctx,-13,-12,26,19,6);ctx.fillStyle='#edc56c';rounded(ctx,-11,-9,22,14,4);ctx.fillStyle='#f0c391';ctx.beginPath();ctx.arc(0,-28,13,0,Math.PI*2);ctx.fill();ctx.fillStyle='#e7b742';ctx.beginPath();ctx.arc(0,-31,14,Math.PI,Math.PI*2);ctx.fill();ctx.restore()}function updateTraining(dt,t){if(trainingPhase==='field'){updateCornfield(dt,t);return}const {x:dx,y:dy}=movementAxes();player.vx+=(dx*285-player.vx)*Math.min(1,dt*12);player.vy+=(dy*285-player.vy)*Math.min(1,dt*12);if(dx||dy)player.dir=Math.atan2(player.vy,player.vx);player.x=clamp(player.x+player.vx*dt,55,1225);player.y=clamp(player.y+player.vy*dt,145,745);if(trainingPhase==='escape'){cleanElapsed+=dt;if(interactPressed){interactPressed=false;startCornfieldRun()}return}const press=interactPressed,held=keys.has('KeyE');interactPressed=false;if(trainingPhase==='brush_pickup'&&(press||held)&&Math.hypot(player.x-toothbrush.x,player.y-toothbrush.y)<112){trainingBrush=true;trainingPhase='brush_teeth';showToast('ЩІТКУ ЗНАЙДЕНО · ПОЧИСТЬ ЗУБИ');}else if(trainingPhase==='brush_teeth'){if(Math.hypot(player.x-210,player.y-550)<155&&(held||press)){brushProgress=Math.min(1,brushProgress+(press?.25:dt*.34));if(brushProgress>=1){trainingPhase='clean';brushProgress=0;chime();showToast('ЗУБИ ПОЧИЩЕНО · ТЕПЕР КАБІНКИ');document.getElementById('objectiveTitle').textContent='ВІДЧИСТИ ТРИ КАБІНКИ'}}else if(!held)brushProgress=Math.max(0,brushProgress-dt*.1)}else if(trainingPhase==='clean'){toiletGuestTimer-=dt;if(toiletGuestTimer<=0&&toiletGuestVisits<7&&toiletGuests.length<2){const cleaned=toiletStalls.filter(q=>!q.occupied&&q.progress>.15),available=toiletStalls.filter(q=>!q.occupied),choices=cleaned.length?cleaned:available,q=choices[Math.floor(Math.random()*choices.length)];toiletGuestVisits++;toiletGuestTimer=3.5+Math.random()*1.2;if(q){q.occupied=true;toiletGuests.push({x:640,y:146,target:q,state:'approach',timer:0})}}for(let i=toiletGuests.length-1;i>=0;i--){const g=toiletGuests[i],q=g.target;if(g.state==='approach'){const vx=q.x-g.x,vy=q.y-42-g.y,d=Math.hypot(vx,vy)||1;g.x+=vx/d*142*dt;g.y+=vy/d*142*dt;if(d<24){g.state='using';g.timer=3.7;showToast('КАБІНКА ЗАЙНЯТА · ПЕРЕЙДИ ДО ІНШОЇ')}}else if(g.state==='using'){g.timer-=dt;if(g.timer<=0){q.occupied=false;q.mess=true;q.progress=Math.max(0,q.progress-.38);g.state='leaving';showToast('СОСЛУЖБОВЕЦЬ ЗАЛИШИВ СЛІД · ДОЧИСТЬ КАБІНКУ')}}else{const vx=1150-g.x,vy=150-g.y,d=Math.hypot(vx,vy)||1;g.x+=vx/d*132*dt;g.y+=vy/d*132*dt;if(d<24)toiletGuests.splice(i,1)}}if(held||press){let q=null,dist=1e9;for(const stall of toiletStalls){const d=Math.hypot(player.x-stall.x,player.y-stall.y);if(d<dist){q=stall;dist=d}}if(q&&dist<94&&!q.occupied){q.progress=Math.min(1,q.progress+(press?.12:dt*.28));q.cleaning=q.progress;if(q.progress>=.995){q.progress=1;q.mess=false}}else toiletStalls.forEach(stall=>stall.cleaning=0)}else toiletStalls.forEach(stall=>stall.cleaning=0);const cleanCount=toiletStalls.filter(q=>q.progress>=.995).length;document.getElementById('delivered').textContent=`${cleanCount} / 3`;if(cleanCount===3&&toiletGuests.length===0&&toiletGuestVisits>=7){trainingPhase='return_brush';showToast('УСІ КАБІНКИ ЧИСТІ · ПОВЕРНИ ЩІТКУ')}}else if(trainingPhase==='return_brush'&&press&&Math.hypot(player.x-210,player.y-550)<95){trainingBrush=false;trainingPhase='leave';document.getElementById('objectiveTitle').textContent='ВИХІД У ДВІР';showToast('ЩІТКУ ПОВЕРНУТО · ВИХІД У ДВОРІ')}else if(trainingPhase==='leave'&&press&&Math.hypot(player.x-trainingDoor.x,player.y-trainingDoor.y)<78){trainingPhase='escape';cleanElapsed=0;showToast('ДВЕРІ ВІДЧИНЕНО · ДО ПОЛЯ')}if(toastTimer>0){toastTimer-=dt;if(toastTimer<=0)document.getElementById('toast').classList.remove('show')}}
-const CORN_TILE=1160;function cornPath(worldY,lane=0){return 640+Math.sin(worldY*Math.PI*2/CORN_TILE+lane*2.3)*(lane?95:170)+lane*245}
-function buildCornfieldBackdrop(){fieldBackdrop=document.createElement('canvas');fieldBackdrop.width=W;fieldBackdrop.height=CORN_TILE;const c=fieldBackdrop.getContext('2d');c.fillStyle='#35432c';c.fillRect(0,0,W,CORN_TILE);for(let gy=0;gy<CORN_TILE;gy+=58){const center=cornPath(gy);for(let col=0;col<24;col++){const x=col*56-24,seed=(gy/58*31+col*17)|0;if(Math.abs(x-center)<64||Math.abs(x-cornPath(gy,1))<38)continue;drawCornPlantTo(c,x,gy+((seed%9)-4),seed)}}c.fillStyle='#927e57';c.globalAlpha=.35;for(let lane=0;lane<2;lane++){c.beginPath();for(let gy=0;gy<=CORN_TILE;gy+=29){const x=cornPath(gy,lane);if(!gy)c.moveTo(x,gy);else c.lineTo(x,gy)}c.lineWidth=lane?24:39;c.strokeStyle='#a99668';c.stroke()}c.globalAlpha=1;for(let x=0;x<W;x+=76){c.fillStyle=x%2?'#536e3b':'#456336';c.fillRect(x,0,2,CORN_TILE)}}
-function drawCornPlantTo(c,x,y,seed){c.strokeStyle=seed%3?'#567c3d':'#739247';c.lineWidth=3;c.beginPath();c.moveTo(x,y+17);c.quadraticCurveTo(x,y,x,y-18);c.stroke();c.fillStyle=seed%2?'#78994a':'#95a853';for(let k=0;k<3;k++){const side=k%2?1:-1,yy=y-2-k*7;c.beginPath();c.ellipse(x+side*(8+k*2),yy,12,4,side*.36,0,Math.PI*2);c.fill()}c.fillStyle='#d9c66a';c.beginPath();c.ellipse(x,y-17,3,7,0,0,Math.PI*2);c.fill()}
-function fieldTrack(type,x,y){fieldTracks.push({type,x,y,life:type==='hero'?11:type==='dog'?8:9,max:type==='hero'?11:type==='dog'?8:9,angle:Math.random()*.22-.11});if(fieldTracks.length>180)fieldTracks.splice(0,fieldTracks.length-180)}
-function updateCornfield(dt,t){const {x:dx,y:dy}=movementAxes(),laneDist=Math.min(Math.abs(player.x-cornPath(player.y)),Math.abs(player.x-cornPath(player.y,1))),speed=laneDist<62?312:156;player.vx+=(dx*speed-player.vx)*Math.min(1,dt*11);player.vy+=(dy*speed-player.vy)*Math.min(1,dt*11);if(dx||dy){fieldAimX=dx;fieldAimY=dy;player.dir=Math.atan2(player.vy,player.vx)}player.x=clamp(player.x+player.vx*dt,56,1224);player.y+=player.vy*dt;fieldProgress=Math.max(0,-player.y);fieldSway+=dt;fieldCar.phase+=dt;fieldCar.ready=fieldProgress>fieldTarget*.72;fieldCar.x=640+Math.sin(t*.55)*110;fieldCar.y=-fieldTarget;const moved=Math.hypot(player.x-fieldTrackX,player.y-fieldTrackY);if(moved>25){fieldTrack('hero',player.x,player.y);fieldTrackX=player.x;fieldTrackY=player.y}for(const tr of fieldTracks)tr.life-=dt;fieldTracks=fieldTracks.filter(tr=>tr.life>0);for(const n of fieldDecoys)n.life-=dt;fieldDecoys=fieldDecoys.filter(n=>n.life>0);shotCooldown=Math.max(0,shotCooldown-dt);fieldInvuln=Math.max(0,fieldInvuln-dt);if((keys.has('Space')||boostPressed)&&shotCooldown<=0){const d=Math.hypot(fieldAimX,fieldAimY)||1,ax=fieldAimX/d,ay=fieldAimY/d;fieldShots.push({x:player.x+ax*24,y:player.y+ay*24,vx:ax*650,vy:ay*650,life:1});fieldDecoys.push({x:player.x+ax*330,y:player.y+ay*330,life:3.4,max:3.4});shotCooldown=.62;tone(590,.07,'triangle',.03,150)}boostPressed=false;for(const shot of fieldShots){shot.x+=shot.vx*dt;shot.y+=shot.vy*dt;shot.life-=dt}fieldShots=fieldShots.filter(q=>q.life>0);fieldSpawnTimer-=dt;if(fieldSpawnTimer<=0&&fieldProgress<fieldTarget*.94&&fieldEnemies.length<9){fieldSpawnTimer=Math.max(.58,1.55-fieldProgress/3100);const edge=Math.floor(Math.random()*4),cam=player.y-575;let x=edge===0?24:edge===1?W-24:90+Math.random()*(W-180),y=edge===2?cam+95:edge===3?cam+H-70:cam+140+Math.random()*(H-250),roll=Math.random(),type=roll<.55?'guard':'dog';fieldEnemies.push({x,y,type,hp:type==='guard'?2:1,speed:type==='dog'?196:136,phase:Math.random()*8,sniff:0})}for(let i=fieldEnemies.length-1;i>=0;i--){const e=fieldEnemies[i];e.phase+=dt*5;let tx=player.x,ty=player.y,best=560;for(const n of fieldDecoys){const d=Math.hypot(n.x-e.x,n.y-e.y);if(d<best){best=d;tx=n.x;ty=n.y}}if(e.sniff>0)e.sniff-=dt;else{const vx=tx-e.x,vy=ty-e.y,d=Math.hypot(vx,vy)||1,brushDist=Math.min(Math.abs(e.x-cornPath(e.y)),Math.abs(e.x-cornPath(e.y,1))),pace=e.speed*(brushDist<62?1:.68);e.x+=vx/d*pace*dt+Math.sin(e.phase)*12*dt;e.y+=vy/d*pace*dt;if(best<560&&Math.hypot(tx-e.x,ty-e.y)<34)e.sniff=1.25}if(e._trackX==null||Math.hypot(e.x-e._trackX,e.y-e._trackY)>34){fieldTrack(e.type,e.x,e.y);e._trackX=e.x;e._trackY=e.y}for(let j=fieldShots.length-1;j>=0;j--){const q=fieldShots[j];if(Math.hypot(q.x-e.x,q.y-e.y)<32){fieldShots.splice(j,1);e.hp--;fieldDecoys.push({x:q.x,y:q.y,life:2.3,max:2.3});if(e.hp<=0){fieldEnemies.splice(i,1);score+=80}break}}if(!fieldEnemies.includes(e))continue;if(Math.abs(e.y-player.y)>1150)fieldEnemies.splice(i,1);else if(fieldInvuln<=0&&Math.hypot(player.x-e.x,player.y-e.y)<38){fieldLives--;fieldInvuln=1.05;player.vx+=(player.x-e.x)*2;player.vy+=(player.y-e.y)*2;showToast(`ПОГОНЯ ЗБИЛА З КУРСУ · ${fieldLives} ♥`);if(fieldLives<=0){showTrainingFail();return}}}if(fieldCar.ready&&Math.hypot(player.x-fieldCar.x,player.y-fieldCar.y)<118){showTrainingEnd();return}document.getElementById('delivered').textContent=`${Math.min(fieldTarget,Math.floor(fieldProgress))} м`;document.getElementById('score').textContent=String(score).padStart(4,'0');if(fieldCar.ready){document.getElementById('objectiveTitle').textContent='MAZDA ПОПЕРЕДУ';document.getElementById('objectiveText').textContent='Добіжи до машини, кидай сирники вбік і стеж за слідами погоні.'}}
-function drawCornPlant(x,y,t,seed){const sway=Math.sin(t*2.2+seed)*4;ctx.strokeStyle=seed%3?'#567c3d':'#739247';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(x,y+17);ctx.quadraticCurveTo(x+sway,y,x+sway*.6,y-18);ctx.stroke();ctx.fillStyle=seed%2?'#78994a':'#95a853';for(let k=0;k<3;k++){const side=k%2?1:-1,yy=y-2-k*7;ctx.beginPath();ctx.ellipse(x+sway+side*(8+k*2),yy,12,4,side*.36,0,Math.PI*2);ctx.fill()}ctx.fillStyle='#d9c66a';ctx.beginPath();ctx.ellipse(x+sway*.6,y-17,3,7,0,0,Math.PI*2);ctx.fill()}
-function drawFieldPerson(x,y,type,t){if(type==='dog'){ctx.save();ctx.translate(x,y);ctx.rotate(Math.sin(t*7+x)*.12);ctx.fillStyle='#714a33';ctx.beginPath();ctx.ellipse(0,2,22,13,0,0,Math.PI*2);ctx.fill();ctx.beginPath();ctx.arc(17,-5,10,0,Math.PI*2);ctx.fill();ctx.fillStyle='#e3c98b';ctx.beginPath();ctx.arc(20,-7,2,0,Math.PI*2);ctx.fill();ctx.strokeStyle='#392b24';ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(-12,9);ctx.lineTo(-16,18);ctx.moveTo(8,9);ctx.lineTo(12,17);ctx.stroke();ctx.restore()}else drawTrainingSoldier(x,y,'#6f7c54')}
-function drawFieldCar(t,sy){ctx.save();ctx.translate(fieldCar.x,sy);ctx.fillStyle='#0008';ctx.beginPath();ctx.ellipse(0,38,76,24,0,0,Math.PI*2);ctx.fill();ctx.fillStyle='#101820';rounded(ctx,-72,-26,144,72,17);ctx.fillStyle='#17242b';rounded(ctx,-53,-46,106,43,15);ctx.fillStyle='#a8c5c4';rounded(ctx,-36,-40,72,24,7);ctx.fillStyle='#d4ab7e';ctx.beginPath();ctx.arc(0,-29,8,0,Math.PI*2);ctx.fill();ctx.fillStyle='#101820';rounded(ctx,-57,-15,114,48,12);ctx.fillStyle='#e6bd52';ctx.fillRect(-68,20,15,9);ctx.fillRect(53,20,15,9);ctx.fillStyle='#d8f2c7';ctx.fillRect(-63,-6,7,11);ctx.fillRect(56,-6,7,11);ctx.fillStyle='#fbebac';ctx.font='bold 11px Arial';ctx.textAlign='center';ctx.fillText('КУМ · MAZDA',0,59);ctx.restore()}
-function drawCornfieldMap(){const x=1052,y=14,w=212,h=204;ctx.fillStyle='#07131ddd';rounded(ctx,x,y,w,h,10);ctx.fillStyle='#f5e9c7';ctx.font='bold 12px Arial';ctx.textAlign='left';ctx.fillText('МАРШРУТ ДО MAZDA ↑',x+12,y+21);ctx.fillStyle='#34432f';rounded(ctx,x+10,y+30,w-20,h-40,7);for(let lane=0;lane<2;lane++){ctx.strokeStyle=lane?'#879969':'#d6c17c';ctx.globalAlpha=.85;ctx.lineWidth=lane?2:3;ctx.beginPath();for(let i=0;i<=18;i++){const p=i/18,worldY=-fieldTarget*p,mx=x+22+(cornPath(worldY,lane)/W)*(w-44),my=y+h-20-p*(h-61);if(!i)ctx.moveTo(mx,my);else ctx.lineTo(mx,my)}ctx.stroke()}ctx.globalAlpha=1;const px=x+22+(player.x/W)*(w-44),py=y+h-20-Math.min(1,fieldProgress/fieldTarget)*(h-61);ctx.fillStyle='#ffe37b';ctx.beginPath();ctx.arc(px,py,5,0,Math.PI*2);ctx.fill();ctx.strokeStyle='#17221b';ctx.lineWidth=2;ctx.stroke();ctx.fillStyle='#eff2c8';ctx.font='bold 10px Arial';ctx.textAlign='center';ctx.fillText('🚙',x+w/2,y+43)}
-function drawCornfield(t){ctx.clearRect(0,0,W,H);const cam=player.y-575,tile=CORN_TILE,offset=-((cam%tile+tile)%tile);ctx.fillStyle='#35432c';ctx.fillRect(0,0,W,H);for(let y=offset;y<H;y+=tile)ctx.drawImage(fieldBackdrop,0,y);for(let i=0;i<24;i++){const side=i%2?1:-1,x=side<0?18+(i*67)%250:W-18-(i*67)%250,y=(i*97+t*31)%H;drawCornPlant(x,y,t,i*17)}for(const tr of fieldTracks){const sy=tr.y-cam;if(sy<-24||sy>H+24)continue;ctx.save();ctx.globalAlpha=.78*(tr.life/tr.max);ctx.translate(tr.x,sy);ctx.rotate(tr.angle);const c=tr.type==='hero'?'#f1d989':tr.type==='dog'?'#e6a454':'#df7569';ctx.strokeStyle='#322f22';ctx.lineWidth=12;ctx.lineCap='round';ctx.beginPath();ctx.moveTo(-18,2);ctx.quadraticCurveTo(0,-8,18,2);ctx.stroke();ctx.strokeStyle=c;ctx.lineWidth=7;ctx.beginPath();ctx.moveTo(-18,2);ctx.quadraticCurveTo(0,-8,18,2);ctx.stroke();ctx.restore()}for(const n of fieldDecoys){const sy=n.y-cam;if(sy<0||sy>H)continue;ctx.globalAlpha=.35+.3*Math.sin(t*12);ctx.fillStyle='#fff0a8';ctx.beginPath();ctx.arc(n.x,sy,11+Math.sin(t*8)*2,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1;ctx.fillStyle='#7c5b2f';ctx.beginPath();ctx.arc(n.x,sy,5,0,Math.PI*2);ctx.fill()}for(const q of fieldShots){const sy=q.y-cam;if(sy<0||sy>H)continue;ctx.fillStyle='#ffe196';ctx.beginPath();ctx.arc(q.x,sy,8,0,Math.PI*2);ctx.fill()}for(const e of fieldEnemies){const sy=e.y-cam;if(sy<-45||sy>H+45)continue;drawFieldPerson(e.x,sy,e.type,t);if(e.sniff>0){ctx.fillStyle='#fff0a8';ctx.font='bold 16px Arial';ctx.textAlign='center';ctx.fillText('…',e.x,sy-26)}}drawTrainingAvatar(player.x,575,t);if(fieldCar.ready){const sy=fieldCar.y-cam;if(sy>-90&&sy<H+90)drawFieldCar(t,sy)}ctx.fillStyle='#07131ddd';rounded(ctx,18,14,400,103,10);ctx.fillStyle='#f5e9c7';ctx.font='bold 14px Arial';ctx.textAlign='left';ctx.fillText('04B · ВТЕЧА КРІЗЬ КУКУРУДЗУ',32,36);ctx.font='bold 11px Arial';ctx.fillStyle='#fff';ctx.fillText(`ШЛЯХ ${Math.floor(fieldProgress)} / ${fieldTarget} м     ОЧКИ ${String(score).padStart(4,'0')}     ♥ ${fieldLives}`,32,55);ctx.fillStyle='#17251c';rounded(ctx,32,64,370,8,4);ctx.fillStyle='#77ddb2';rounded(ctx,34,66,366*Math.min(1,fieldProgress/fieldTarget),4,2);ctx.font='bold 10px Arial';ctx.fillStyle='#f1d989';ctx.fillText('━ ТИ',32,88);ctx.fillStyle='#df7569';ctx.fillText('━ СОЛДАТ',105,88);ctx.fillStyle='#e6a454';ctx.fillText('━ СОБАКА',205,88);ctx.fillStyle='#d7e2d1';ctx.fillText('WASD · РУХ   SPACE · СИРНИК ВІДВОЛІКАЄ',32,105);drawCornfieldMap();if(fieldSway<5){ctx.save();ctx.globalAlpha=Math.min(1,(5-fieldSway)*1.5);ctx.fillStyle='#08131ee8';rounded(ctx,438,14,448,42,8);ctx.fillStyle='#fff1c8';ctx.font='bold 11px Arial';ctx.textAlign='center';ctx.fillText('WASD — РУХ · SPACE — КИНЬ СИРНИК УБІК, ЩОБ ВІДВОЛІКТИ ПОГОНЮ',662,39);ctx.restore()}if(fieldCar.ready){ctx.fillStyle='#ffe89c';ctx.font='bold 11px Arial';ctx.textAlign='center';ctx.fillText('MAZDA ПОПЕРЕДУ · КУМ ЧЕКАЄ',W/2,25)}}
-function drawTrainingPrompt(x,y,label,progress){ctx.save();ctx.textAlign='center';ctx.font='bold 10px Arial';const w=Math.max(60,ctx.measureText(label).width+14);ctx.fillStyle='#101923e8';rounded(ctx,x-w/2,y-17,w,21,6);ctx.fillStyle='#fff';ctx.fillText(label,x,y-3);if(progress!=null){ctx.fillStyle='#18251f';rounded(ctx,x-w/2,y+8,w,6,3);ctx.fillStyle='#61d3a8';rounded(ctx,x-w/2+2,y+10,(w-4)*progress,2,2)}ctx.restore()}
-function showTrainingEnd(){running=false;gameEnded=true;const layer=document.getElementById('intro');layer.classList.remove('hidden');layer.innerHTML=`<section class="card"><div class="eyebrow">РІВЕНЬ 4 · ПОЛЕ ЗАЛИШИЛОСЯ ПОЗАДУ</div><h1>У Mazda.<br><em>І жодного строю.</em></h1><p>За кермом Mazda чекає кум. Герой дав йому гроші «на відкуп», а кум купив у Steam картинки ножиків для CS. «Кста, сідай — А потім помер», — каже він і тисне на газ.</p><div class="mission"><span>🪪 Пропуск: отримано</span><span>🌽 Поле: пройдено</span></div><button id="retryLevel4Btn">ПОВТОРИТИ ПОЛЕ　↻</button><button id="toLevel5Btn" class="secondary">ПЕРЕЙТИ ДО РІВНЯ 5　→</button><br><button id="menuLevel4Btn" class="secondary">ГОЛОВНЕ МЕНЮ</button></section>`;document.getElementById('retryLevel4Btn').onclick=startCornfieldLevel;document.getElementById('toLevel5Btn').onclick=showVrCutscene;document.getElementById('menuLevel4Btn').onclick=()=>location.reload()}function showTrainingFail(){running=false;gameEnded=true;const layer=document.getElementById('intro');layer.classList.remove('hidden');layer.innerHTML=`<section class="card"><div class="eyebrow">РІВЕНЬ 4 · ПОЛЕ</div><h1>Кукурудза виграла.<br><em>Цього разу.</em></h1><p>Переслідувачі наздогнали героя. Зберися, віднови запас сирників і спробуй ще раз.</p><button id="retryLevel4Btn">ПОВТОРИТИ ПОЛЕ　↻</button></section>`;document.getElementById('retryLevel4Btn').onclick=startCornfieldLevel}
-function drawWorld(t){if(stage===3&&chaseBackdrop){drawChaseWorld(t);return}if(stage===2){drawCafe(t);return}if(stage===5||stage===9){drawTrainingStage(t);return}if(stage===6){drawVrArcade(t);return}if(stage===7){drawForest(t);return}if(stage===8){drawGermany(t);return}if(stage===4){drawCaptureCutscene(Math.max(0,(performance.now()-captureStartedAt)/1000));return}ctx.clearRect(0,0,W,H);ctx.save();ctx.translate(W/2-player.x,H/2-player.y);drawGround();drawScenery(t);drawDistrict();if(stage===1||stage===3)drawSmilaLandmarks(t);if(stage===3)drawNeonCity(t);roadsX.forEach(x=>roadsY.forEach(y=>{ctx.fillStyle='#d0c1a0';ctx.beginPath();ctx.arc(x,y,13,0,Math.PI*2);ctx.fill();ctx.fillStyle='#6d8a69';ctx.beginPath();ctx.arc(x,y,8,0,Math.PI*2);ctx.fill()}));cars.forEach(c=>drawCar(c,t));pedestrians.forEach(p=>drawPedestrian(p,t));deliveries.forEach((d,i)=>drawDelivery(d,i,t));if(courierToCafe)drawCafeDestination(t);if(stage===3&&chaseMarkerActive)drawSafeMarker(t);if(stage===3)drawChaseVan(t);drawPlayer(t);ctx.restore();if(stage===3)drawNightOverlay(t);if(stage!==3){const vign=ctx.createRadialGradient(W/2,H/2,240,W/2,H/2,770);vign.addColorStop(0,'transparent');vign.addColorStop(1,'#12192158');ctx.fillStyle=vign;ctx.fillRect(0,0,W,H)}}function drawMini(){if(stage===8&&germany){mctx.clearRect(0,0,MINI_W,MINI_H);mctx.fillStyle='#d3d8ce';mctx.fillRect(0,0,MINI_W,MINI_H);const sx=MINI_W/germany.worldW,sy=MINI_H/germany.worldH;mctx.fillStyle='#596168';for(const y of [250,800,1350,1700])mctx.fillRect(0,y*sy-3,MINI_W,6);for(const x of [200,700,1200,1700,2200])mctx.fillRect(x*sx-3,0,6,MINI_H);mctx.fillStyle='#ffe26a';mctx.beginPath();mctx.arc(germany.machine.x*sx,germany.machine.y*sy,5,0,Math.PI*2);mctx.fill();mctx.fillStyle='#303d43';mctx.font='bold 8px Arial';mctx.textAlign='left';mctx.fillText('LIDL PFAND',germany.machine.x*sx+7,germany.machine.y*sy+3);mctx.fillStyle='#41c6a6';mctx.beginPath();mctx.arc(germany.x*sx,germany.y*sy,4,0,Math.PI*2);mctx.fill();mctx.strokeStyle='#fff';mctx.lineWidth=1;mctx.stroke();mctx.fillStyle='#d95074';mctx.beginPath();mctx.arc(germany.meet.x*sx,germany.meet.y*sy,3,0,Math.PI*2);mctx.fill();return}if(stage===2||stage===5||stage===6||stage===7||stage===9)return;mctx.clearRect(0,0,MINI_W,MINI_H);mctx.fillStyle='#9eaf91';mctx.fillRect(0,0,MINI_W,MINI_H);mctx.fillStyle='#4a545d';roadsX.forEach(x=>mctx.fillRect(x/world.w*MINI_W-4,0,8,MINI_H));roadsY.forEach(y=>mctx.fillRect(0,y/world.h*MINI_H-4,MINI_W,8));if(stage===3)mctx.fillStyle='rgba(8,16,34,.16)',mctx.fillRect(0,0,MINI_W,MINI_H);for(const [lx,ly,label,color] of [[700,760,'Ц','#ffe5a3'],[2760,2110,'A','#ff916f']]){mctx.fillStyle=color;mctx.beginPath();mctx.arc(lx/world.w*MINI_W,ly/world.h*MINI_H,4,0,Math.PI*2);mctx.fill();mctx.font='bold 7px Arial';mctx.textAlign='center';mctx.fillText(label,lx/world.w*MINI_W,ly/world.h*MINI_H-6)}const targets=deliveries.filter(d=>!d.done);mctx.strokeStyle=stage===3?'#ffd77a':'#fff1a8';mctx.lineWidth=2;mctx.setLineDash([5,4]);mctx.beginPath();mctx.moveTo(player.x/world.w*MINI_W,player.y/world.h*MINI_H);if(targets.length){for(const d of targets)mctx.lineTo(d.x/world.w*MINI_W,d.y/world.h*MINI_H)}else if(courierToCafe)mctx.lineTo(cafeDestination.x/world.w*MINI_W,cafeDestination.y/world.h*MINI_H);else if(stage===3&&chaseMarkerActive)mctx.lineTo(chaseDestination.x/world.w*MINI_W,chaseDestination.y/world.h*MINI_H);mctx.stroke();mctx.setLineDash([]);for(const d of deliveries){mctx.fillStyle=d.done?'#72847b':d.color;mctx.beginPath();mctx.arc(d.x/world.w*MINI_W,d.y/world.h*MINI_H,4,0,Math.PI*2);mctx.fill()}if(courierToCafe){mctx.fillStyle='#39edb7';mctx.beginPath();mctx.arc(cafeDestination.x/world.w*MINI_W,cafeDestination.y/world.h*MINI_H,6,0,Math.PI*2);mctx.fill();mctx.fillStyle='#102a28';mctx.font='bold 8px Arial';mctx.textAlign='center';mctx.fillText('VR',cafeDestination.x/world.w*MINI_W,cafeDestination.y/world.h*MINI_H+3)}if(stage===3){mctx.fillStyle='#43572e';mctx.beginPath();mctx.arc(chaseVan.x/world.w*MINI_W,chaseVan.y/world.h*MINI_H,4,0,Math.PI*2);mctx.fill();if(chaseMarkerActive){mctx.fillStyle='#4cf0b5';mctx.beginPath();mctx.arc(chaseDestination.x/world.w*MINI_W,chaseDestination.y/world.h*MINI_H,6,0,Math.PI*2);mctx.fill();mctx.strokeStyle='#fff';mctx.stroke()}}mctx.fillStyle='#20bda7';mctx.beginPath();mctx.arc(player.x/world.w*MINI_W,player.y/world.h*MINI_H,4,0,Math.PI*2);mctx.fill();mctx.strokeStyle='#fff';mctx.lineWidth=1;mctx.stroke()}
-function update(dt,t){pollGamepad();if(!running||paused)return;if(stage===5||stage===9){updateTraining(dt,t);return}if(stage===6){updateVrArcade(dt,t);return}if(stage===7){updateForest(dt,t);return}if(stage===8){updateGermany(dt,t);return}time-=dt;if(time<=0){time=0;document.getElementById('timer').textContent='00:00';if(stage===3){showChaseCapture();return}finish(false);return}if(stage===2){updateCafe(dt);return}if(stage===3){updateChase(dt);return}
-updateCityTraffic(dt);if(!churchEventUsed&&Math.hypot(player.x-700,player.y-760)<150){churchEventUsed=true;time=Math.min(99,time+8);score+=100;showToast('ДЗВІН НАД СМІЛОЮ · +8 СЕКУНД');chime()}if(!azotEventUsed&&Math.hypot(player.x-2760,player.y-2110)<190){azotEventUsed=true;player.boost=Math.max(player.boost,1.6);score+=150;showToast('АЗОТ ПІДКИНУВ ПОПУТНИЙ ВІТЕР · РИВОК');tone(340,.2,'triangle',.04,450)}player.boostCd=Math.max(0,player.boostCd-dt);player.boost=Math.max(0,player.boost-dt);player.bump=Math.max(0,player.bump-dt);const {x:ax,y:ay}=movementAxes();const moving=ax||ay,onRoad=roadsX.some(x=>Math.abs(x-player.x)<roadW/2-20)||roadsY.some(y=>Math.abs(y-player.y)<roadW/2-20),accel=onRoad?1180:730,max=(onRoad?440:280)*(player.boost>0?1.7:1);if(moving){player.vx+=ax*accel*dt;player.vy+=ay*accel*dt;player.dir=Math.atan2(player.vy,player.vx)}else{player.vx*=Math.pow(.06,dt);player.vy*=Math.pow(.06,dt)}const sp=Math.hypot(player.vx,player.vy);if(sp>max){player.vx=player.vx/sp*max;player.vy=player.vy/sp*max}const oldx=player.x,oldy=player.y;player.x=clamp(player.x+player.vx*dt,24,world.w-24);player.y=clamp(player.y+player.vy*dt,24,world.h-24);for(const b of buildings){const dx=player.x-b.x,dy=player.y-b.y,ox=b.w/2+17-Math.abs(dx),oy=b.h/2+17-Math.abs(dy);if(ox>0&&oy>0){if(ox<oy)player.x=oldx;else player.y=oldy;player.vx*=.4;player.vy*=.4;player.bump=.5;score=Math.max(0,score-8)}}for(const c of cars){const dx=player.x-c.x,dy=player.y-c.y;if(Math.abs(dx)<39&&Math.abs(dy)<28){player.x=oldx;player.y=oldy;player.vx*=-.32;player.vy*=-.32;player.bump=.65;score=Math.max(0,score-12);tone(120,.12,'sawtooth',.035,-45)}}for(const p of pedestrians){if(p.stun<=0&&Math.hypot(player.x-p.x,player.y-p.y)<29&&sp>48){p.stun=2.6;p.x=clamp(p.x+player.vx*.08,0,world.w);p.y=clamp(p.y+player.vy*.08,0,world.h);player.vx*=.65;player.vy*=.65;player.bump=.65;score=Math.max(0,score-5);showToast('ОЙ! ПЕРЕПРОШУЄМО ПІШОХОДА');tone(180,.08,'triangle',.025,-50)}}for(const p of puddles)if((player.x-p.x)**2/(p.rx*p.rx)+(player.y-p.y)**2/(p.ry*p.ry)<1&&sp>70){player.vx*=.975;player.vy*=.975}if(boostPressed){boostPressed=false;if(player.boostCd<=0){player.boost=.8;player.boostCd=2;const n=Math.hypot(player.vx,player.vy)||1;player.vx+=player.vx/n*270;player.vy+=player.vy/n*270;tone(310,.16,'sawtooth',.045,400)}}const target=deliveries[0];if(target&&!target.done&&Math.hypot(player.x-target.x,player.y-target.y)<76){target.done=true;delivered++;streak++;bestStreak=Math.max(bestStreak,streak);time=Math.min(99,time+25);score+=250+Math.round(time*2)+Math.min(streak,10)*25;chime();document.getElementById('delivered').textContent=String(delivered);document.getElementById('timer').textContent=formatTime(time);tone(740,.12,'triangle',.045,300);if(delivered>=5){deliveries=[];courierToCafe=true;document.getElementById('objectiveTitle').textContent='НА ЗМІНУ: VR-КАФЕ';document.getElementById('objectiveText').textContent='Останню посилку доставлено! Їдь до зеленого маркера на іншому кінці міста.';showToast('ПОСИЛКИ ДОСТАВЛЕНО. ЧАС ЇХАТИ НА ЗМІНУ!');return}showToast(`ПОСИЛКУ ДОСТАВЛЕНО! +25 СЕК · СЕРІЯ ×${streak}`);const next=nextDelivery();document.getElementById('objectiveTitle').textContent=`НАСТУПНА ЦІЛЬ: ${next.name}`;document.getElementById('objectiveText').textContent=`${next.sub} · нова адреса вже на мапі!`}const next=deliveries[0];if(next){const dist=Math.hypot(player.x-next.x,player.y-next.y);document.getElementById('objectiveText').textContent=`${next.sub} · До відділення ${Math.round(dist)} м`}else if(courierToCafe){const dist=Math.hypot(player.x-cafeDestination.x,player.y-cafeDestination.y);document.getElementById('objectiveText').textContent=`Твоя зміна чекає · До VR-кафе ${Math.round(dist)} м`;if(dist<92){courierToCafe=false;running=false;showToast('ДО КАФЕ ДІСТАЛИСЯ!');setTimeout(showCafeCutscene,700);return}}document.getElementById('timer').textContent=formatTime(time);document.getElementById('score').textContent=String(score).padStart(4,'0');document.getElementById('speedValue').textContent=Math.round(Math.hypot(player.vx,player.vy)*.21);document.getElementById('boostMeter').style.transform=`scaleX(${player.boostCd?1-player.boostCd/2:1})`;if(toastTimer>0){toastTimer-=dt;if(toastTimer<=0)document.getElementById('toast').classList.remove('show')}}let loopFrame=0;function scheduleLoop(){if(!loopFrame&&running&&!paused)loopFrame=requestAnimationFrame(loop)}function loop(now){loopFrame=0;if(!running||paused)return;let dt=Math.min((now-last)/1000,.04);last=now;const t=now/1000;update(dt,t);drawWorld(t);drawMini();scheduleLoop()}
-function canvasPointer(){const r=canvas.getBoundingClientRect();return{x:(pointerX-r.left)/r.width*W,y:(pointerY-r.top)/r.height*H}}let pointerX=0,pointerY=0,pointerSeen=false;function pollGamepad(){const pads=navigator.getGamepads?.()||[];const p=[...pads].find(Boolean);gamepadMoveX=p&&Math.abs(p.axes[0]||0)>.18?p.axes[0]:0;gamepadMoveY=p&&Math.abs(p.axes[1]||0)>.18?p.axes[1]:0;if(p){gamepadMoveX=clamp(gamepadMoveX+(p.buttons[15]?.pressed?1:0)-(p.buttons[14]?.pressed?1:0),-1,1);gamepadMoveY=clamp(gamepadMoveY+(p.buttons[13]?.pressed?1:0)-(p.buttons[12]?.pressed?1:0),-1,1)}const padSpace=!!p?.buttons[0]?.pressed;if(padSpace&&!padSpaceWas)boostPressed=true;padSpaceWas=padSpace;if(padSpace)keys.add('Space');else keys.delete('Space');if(p?.buttons[1]?.pressed)keys.add('ShiftLeft');else keys.delete('ShiftLeft');const padInteract=!!p?.buttons[2]?.pressed;if(padInteract&&!padInteractWas)interactPressed=true;padInteractWas=padInteract;if(padInteract)keys.add('KeyE');else keys.delete('KeyE')}function normalizeKey(e){const code=e.code||'';if(code==='Escape'||code==='Space'||code.startsWith('Arrow')||code.startsWith('Shift')||['KeyW','KeyA','KeyS','KeyD','KeyE','KeyF','Enter'].includes(code))return code;const k=(e.key||'').toLowerCase();return({w:'KeyW',a:'KeyA',s:'KeyS',d:'KeyD',e:'KeyE',f:'KeyF',' ':'Space',spacebar:'Space',arrowup:'ArrowUp',arrowdown:'ArrowDown',arrowleft:'ArrowLeft',arrowright:'ArrowRight',escape:'Escape',shift:'ShiftLeft',enter:'Enter'})[k]||code}function actionKey(code){if(code==='Escape'){togglePause();return}if(code==='Space'||code.startsWith('Arrow')||['KeyW','KeyA','KeyS','KeyD'].includes(code))keys.add(code)}
-const moveStick=document.getElementById('moveStick'),stickThumb=document.getElementById('stickThumb');function resetStick(){touchAxisX=touchAxisY=0;stickThumb.style.transform='translate(0,0)'}function moveStickPointer(e){const r=moveStick.getBoundingClientRect(),cx=r.left+r.width/2,cy=r.top+r.height/2,dx=e.clientX-cx,dy=e.clientY-cy,max=Math.min(r.width,r.height)*.34,d=Math.hypot(dx,dy),scale=d>max?max/d:1;const x=dx*scale,y=dy*scale;stickThumb.style.transform=`translate(${x}px,${y}px)`;const mag=Math.min(1,d/max),dead=.12;if(mag<dead){touchAxisX=touchAxisY=0}else{const v=(mag-dead)/(1-dead);touchAxisX=x/(max||1)*v;touchAxisY=y/(max||1)*v}}moveStick.addEventListener('pointerdown',e=>{e.preventDefault();moveStick.setPointerCapture(e.pointerId);moveStickPointer(e)});moveStick.addEventListener('pointermove',e=>{if(moveStick.hasPointerCapture(e.pointerId))moveStickPointer(e)});['pointerup','pointercancel','lostpointercapture'].forEach(ev=>moveStick.addEventListener(ev,resetStick));canvas.addEventListener('pointermove',e=>{pointerX=e.clientX;pointerY=e.clientY;pointerSeen=true});canvas.addEventListener('pointerdown',e=>{focusGame();pointerX=e.clientX;pointerY=e.clientY;pointerSeen=true;if(stage===6){keys.add('Space');e.preventDefault()}else if(stage===2&&e.button===0){interactPressed=true;e.preventDefault()}});['pointerup','pointercancel','pointerleave'].forEach(ev=>canvas.addEventListener(ev,()=>keys.delete('Space')));addEventListener('keydown',e=>{const code=normalizeKey(e);if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space','KeyW','KeyA','KeyS','KeyD'].includes(code)||((stage===2||stage===5)&&['KeyE','KeyF','Enter'].includes(code))||((stage===6||stage===7)&&code==='KeyE'))e.preventDefault();if(e.repeat&&code==='Escape')return;if(code==='Space'&&!e.repeat)boostPressed=true;if((stage===6||stage===7)&&code.startsWith('Shift')&&!e.repeat)vrDashPressed=true;if((stage===2&&!e.repeat&&['KeyE','KeyF','Enter'].includes(code))||(stage===5&&!e.repeat&&(code==='KeyE'||(trainingPhase==='escape'&&code==='Enter')))|| (stage===6&&!e.repeat&&code==='KeyE'))interactPressed=true;if(stage===5&&(code==='KeyE'||(trainingPhase==='escape'&&code==='Enter'))||stage===7&&code==='KeyE')keys.add(code);actionKey(code)},{capture:true,passive:false});addEventListener('keyup',e=>keys.delete(normalizeKey(e)),{capture:true});addEventListener('blur',()=>{keys.clear();boostPressed=false;interactPressed=false;touchAxisX=touchAxisY=gamepadMoveX=gamepadMoveY=0;padSpaceWas=false;padInteractWas=false;resetStick()});document.querySelectorAll('[data-key]').forEach(b=>{const k=b.dataset.key;b.addEventListener('pointerdown',e=>{e.preventDefault();keys.add(k);if(k==='Space')boostPressed=true;if(k==='ShiftLeft'&&stage===6)vrDashPressed=true;b.setPointerCapture(e.pointerId)});['pointerup','pointercancel','lostpointercapture'].forEach(ev=>b.addEventListener(ev,()=>keys.delete(k)))});document.getElementById('interactTouch').addEventListener('pointerdown',e=>{e.preventDefault();interactPressed=true;if(stage===5||stage===7){keys.add('KeyE');e.currentTarget.setPointerCapture(e.pointerId)}});['pointerup','pointercancel','lostpointercapture'].forEach(ev=>document.getElementById('interactTouch').addEventListener(ev,()=>keys.delete('KeyE')));canvas.addEventListener('pointerdown',e=>{if(stage===2&&e.button===0){interactPressed=true;e.preventDefault()}});document.getElementById('startBtn').onclick=start;document.getElementById('startLevel2Btn').onclick=enterCafe;document.getElementById('startLevel3Btn').onclick=startLevel3;document.getElementById('startLevel4Btn').onclick=startLevel4;document.getElementById('startLevel4bBtn').onclick=startCornfieldLevel;document.getElementById('startLevel5Btn').onclick=showVrCutscene;document.getElementById('startLevel6Btn').onclick=startForestLevel;document.getElementById('startLevel7Btn').onclick=showGermanyTransition;document.getElementById('skipLevelBtn').onclick=skipCourierLevel;document.getElementById('resumeBtn').onclick=togglePause;document.getElementById('soundBtn').onclick=()=>{soundOn=!soundOn;document.getElementById('soundBtn').setAttribute('aria-pressed',String(soundOn));document.getElementById('soundBtn').setAttribute('aria-label',soundOn?'Вимкнути звук':'Увімкнути звук');document.getElementById('soundBtn').textContent=`♫ ЗВУК: ${soundOn?'УВІМК.':'ВИМК.'}`;if(soundOn)audioStart();else if('speechSynthesis'in window)speechSynthesis.cancel()};document.getElementById('fullscreenBtn').onclick=async()=>{try{if(!document.fullscreenElement)await document.getElementById('game').requestFullscreen();else await document.exitFullscreen()}catch{showToast('Повноекранний режим недоступний у цьому браузері')}};
-function boot(){nextDelivery();drawWorld(0);drawMini();document.getElementById('objectiveTitle').textContent=`МІСІЯ: ${deliveries[0].name}`;document.getElementById('objectiveText').textContent='Кожна доставка додає +25 секунд. Вирушай до маркера!'}
-boot();
+let forest = null,
+  germany = null,
+  vrMaze = null;
+let vrWave = 1,
+  vrEnemies = [],
+  vrShots = [],
+  vrEnemyShots = [],
+  vrPlayer = { x: 640, hp: 3, invuln: 0 },
+  vrBoss = null,
+  vrFireCooldown = 0,
+  vrEnemyFire = 0,
+  vrWavePause = 0,
+  vrDashPressed = false,
+  vrDashCooldown = 0,
+  vrStars = [];
+function showVrCutscene() {
+  saveCampaignChapter(6);
+  running = false;
+  paused = false;
+  const layer = document.getElementById("intro");
+  layer.classList.remove("hidden");
+  layer.innerHTML = `<section class="card vr-story-card"><style>
+.vr-story-card{width:min(820px,94vw)}.vr-scene{height:290px;position:relative;overflow:hidden;border:2px solid #526671;border-radius:18px;background:linear-gradient(#263440 0 72%,#17232a 72%);box-shadow:inset 0 0 55px #07121d;margin:18px 0 20px}.vr-scene:before{content:"";position:absolute;left:5%;right:5%;top:12%;height:57%;border:8px solid #18232d;border-radius:9px;background:linear-gradient(#344d67 0 70%,#293d4c 70%)}.vr-church{position:absolute;right:19%;top:45px;color:#d9d0aa;font-size:45px;text-shadow:0 0 14px #ffd783}.vr-door{position:absolute;left:7%;bottom:27%;width:82px;height:150px;background:#332f32;border:7px solid #111a20;border-radius:8px 8px 0 0;transform:perspective(250px) rotateY(-15deg);box-shadow:inset -12px 0 #67513a}.vr-stairs{position:absolute;left:0;bottom:24%;width:31%;height:48%;background:repeating-linear-gradient(0deg,#64605a 0 10px,#252f34 10px 16px);clip-path:polygon(0 0,100% 60%,100% 100%,0 100%);opacity:.8}.vr-floor{position:absolute;bottom:0;left:0;right:0;height:26%;background:repeating-linear-gradient(90deg,#344044 0 2px,transparent 2px 85px),linear-gradient(#283438,#11191d)}.vr-prop{position:absolute;bottom:22%;font-size:48px;filter:drop-shadow(0 7px 4px #0009)}.vr-scooter{left:19%}.vr-pack{right:18%}.vr-walker,.vr-sitter{position:absolute;bottom:20%;font-size:74px;filter:drop-shadow(0 8px 5px #000b);transition:all .7s ease}.vr-walker{left:8%;animation:vr-enter 2s ease-in-out infinite alternate}.vr-sitter{left:46%;transform:scale(.92);display:none}.vr-visor{position:absolute;left:calc(46% + 8px);bottom:42%;font-size:38px;display:none;filter:drop-shadow(0 0 12px #4ff6ff)}.vr-scene[data-step="1"] .vr-walker,.vr-scene[data-step="2"] .vr-walker{display:none}.vr-scene[data-step="1"] .vr-sitter,.vr-scene[data-step="2"] .vr-sitter{display:block}.vr-scene[data-step="2"] .vr-visor{display:block}.vr-scene[data-step="0"] .vr-prop{opacity:.28}.vr-caption{position:absolute;left:0;right:0;bottom:10px;text-align:center;color:#f7e8cc;font-size:13px;font-weight:800;letter-spacing:.08em;text-shadow:0 2px 5px #000}.vr-story-card h2{margin:8px 0;color:#f6e5c8}.vr-story-card .mission{margin:12px 0}.vr-story-card .story-dots{display:flex;gap:8px;justify-content:center;margin:10px}.vr-story-card .story-dots i{width:9px;height:9px;border-radius:50%;background:#63727c}.vr-story-card .story-dots i.on{background:#56e4e6;box-shadow:0 0 10px #56e4e6}@keyframes vr-enter{from{left:8%}to{left:25%}}
+</style><div class="eyebrow">КАТСЦЕНА · РІВЕНЬ 5 · ПІДВАЛ</div><div class="vr-scene" id="vrScene" data-step="0"><div class="vr-door"></div><div class="vr-stairs"></div><div class="vr-church">✝</div><div class="vr-floor"></div><div class="vr-walker">🧍🏻‍♂️</div><div class="vr-sitter">🧎🏻‍♂️</div><div class="vr-visor">🥽</div><div class="vr-caption" id="vrCaption">ГЕРОЙ СПУСКАЄТЬСЯ В СИРИЙ ПІДВАЛ</div></div><h2 id="vrStoryTitle">Двері зачиняються за спиною.</h2><p id="vrStoryText">Він залишає самокат і рюкзак біля стіни. У маленькому вікні видніється церква.</p><div class="story-dots"><i class="on"></i><i></i><i></i></div><button id="vrStoryNext">ДАЛІ　→</button><p class="micro">Після катсцени почнеться VR-головоломка: перенеси сирники, заглуши бетонні труби й вимкни завод.</p></section>`;
+  let step = 0;
+  const captions = [
+    "ГЕРОЙ СПУСКАЄТЬСЯ В СИРИЙ ПІДВАЛ",
+    "НА СТАРОМУ ЕКРАНІ ЗАВАНТАЖУЄТЬСЯ ПЛАН ЦЕХУ",
+    "ШОЛОМ НАДЯГНУТО · ВХІД У VR-ЦЕХ",
+  ];
+  const titles = [
+    "Двері зачиняються за спиною.",
+    "Цех працює на критичному тиску.",
+    "Світ навколо зникає.",
+  ];
+  const texts = [
+    "У маленькому вікні видніється церква. На столі блимає старий шолом.",
+    "На екрані блимає схема: зважити платформу, заглушити три труби й повернути клапан.",
+    "У VR можна переносити сирники, обходити блоки на конвеєрі та керувати заводом клавішею E.",
+  ];
+  const advance = () => {
+    step++;
+    if (step >= 3) {
+      startLevel5();
+      return;
+    }
+    document.getElementById("vrScene").dataset.step = String(step);
+    document.getElementById("vrCaption").textContent = captions[step];
+    document.getElementById("vrStoryTitle").textContent = titles[step];
+    document.getElementById("vrStoryText").textContent = texts[step];
+    document
+      .querySelectorAll(".story-dots i")
+      .forEach((dot, i) => dot.classList.toggle("on", i === step));
+    document.getElementById("vrStoryNext").textContent =
+      step === 2 ? "ЗНЕШКОДИТИ ЗАВОД　→" : "ДАЛІ　→";
+  };
+  document.getElementById("vrStoryNext").onclick = advance;
+}
+function buildFactoryBackdrop() {
+  const c = document.createElement("canvas");
+  c.width = W;
+  c.height = H;
+  const g = c.getContext("2d");
+  g.fillStyle = "#26252b";
+  g.fillRect(0, 0, W, H);
+  g.fillStyle = "#45232f";
+  g.fillRect(0, 0, W, 185);
+  for (let row = 0; row < 9; row++) {
+    const yy = row * 21;
+    for (let col = -1; col < 27; col++) {
+      const xx = col * 52 + (row % 2) * 26;
+      g.fillStyle = ["#7e3444", "#8f3a4a", "#71303d", "#9a4350"][
+        (row * 7 + col * 3 + 80) % 4
+      ];
+      g.fillRect(xx + 2, yy + 2, 48, 17);
+      g.strokeStyle = "#4a2630";
+      g.lineWidth = 2;
+      g.strokeRect(xx + 2, yy + 2, 48, 17);
+    }
+  }
+  for (const x of [0, 48, 96, W - 116, W - 68, W - 20]) {
+    g.fillStyle = "#512937";
+    g.fillRect(x, 185, 20, H - 185);
+    for (let y = 205; y < H; y += 23) {
+      g.fillStyle = "#8d3c4b";
+      g.fillRect(x + 2, y, 16, 18);
+      g.strokeStyle = "#48252f";
+      g.strokeRect(x + 2, y, 16, 18);
+    }
+  }
+  g.fillStyle = "#34343a";
+  g.fillRect(128, 185, W - 256, H - 185);
+  for (let y = 220; y < H; y += 90) {
+    g.strokeStyle = "#4a4a50";
+    g.lineWidth = 2;
+    g.beginPath();
+    g.moveTo(82, y);
+    g.lineTo(W - 82, y);
+    g.stroke();
+  }
+  for (let x = 125; x < W - 100; x += 128) {
+    g.strokeStyle = "#414147";
+    g.beginPath();
+    g.moveTo(x, 190);
+    g.lineTo(x, H);
+    g.stroke();
+  }
+  g.fillStyle = "#201c25";
+  rounded(g, 420, 24, 440, 102, 10);
+  g.strokeStyle = "#ff3e9b";
+  g.lineWidth = 4;
+  g.shadowColor = "#ff3e9b";
+  g.shadowBlur = 20;
+  g.strokeRect(432, 32, 416, 86);
+  g.shadowBlur = 0;
+  g.fillStyle = "#f3d1b1";
+  g.font = "900 25px Arial";
+  g.textAlign = "center";
+  g.fillText("БЕТОННИЙ ЗАВОД", 640, 70);
+  g.fillStyle = "#5ce9e1";
+  g.font = "bold 17px Arial";
+  g.fillText("СИХОВА", 640, 98);
+  for (const y of [206, 345, 514, 700]) {
+    g.strokeStyle = y % 2 ? "#31dfd2" : "#ff3e9b";
+    g.lineWidth = 5;
+    g.shadowColor = g.strokeStyle;
+    g.shadowBlur = 13;
+    g.beginPath();
+    g.moveTo(78, y);
+    g.lineTo(132, y);
+    g.moveTo(W - 132, y);
+    g.lineTo(W - 78, y);
+    g.stroke();
+    g.shadowBlur = 0;
+  }
+  g.fillStyle = "#f3bd59";
+  for (const x of [105, 1175]) {
+    g.beginPath();
+    g.moveTo(x, 178);
+    g.lineTo(x + 13, 178);
+    g.lineTo(x + 6, 204);
+    g.closePath();
+    g.fill();
+  }
+  return c;
+}
+function startLevel5() {
+  focusGame();
+  document
+    .getElementById("game")
+    .classList.remove("germany-mode", "forest-mode");
+  stage = 6;
+  document.getElementById("game").classList.remove("training-mode");
+  gameEnded = false;
+  running = true;
+  paused = false;
+  score = 0;
+  vrMaze = {
+    backdrop: buildFactoryBackdrop(),
+    player: { x: 640, y: 710, hp: 5, invuln: 0, dir: -Math.PI / 2 },
+    phase: 0,
+    clock: 0,
+    plate: { x: 300, y: 560, active: false },
+    supply: { x: 145, y: 642, count: 4 },
+    carrying: false,
+    dropped: [],
+    sockets: [
+      { x: 300, y: 315, plugged: false },
+      { x: 640, y: 300, plugged: false },
+      { x: 980, y: 315, plugged: false },
+    ],
+    valve: { x: 1060, y: 260, turned: false },
+    panel: { x: 640, y: 185, active: false },
+    hazards: [],
+    hazardTimer: 1.1,
+    score: 0,
+    invuln: 0,
+  };
+  vrPlayer = vrMaze.player;
+  vrDashCooldown = 0;
+  keys.clear();
+  boostPressed = false;
+  interactPressed = false;
+  document.getElementById("game").classList.add("arcade-mode");
+  document.getElementById("game").classList.remove("cafe-mode");
+  document.querySelector(".mapbox").style.display = "none";
+  document.querySelector(".speed").style.display = "none";
+  setHint("");
+  document.getElementById("delivered").parentElement.firstChild.textContent =
+    "🏭 МЕХАНІЗМИ ";
+  document.getElementById("delivered").textContent = "0 / 5";
+  document.getElementById("timer").textContent = "VR";
+  document.getElementById("objectiveTitle").textContent =
+    "БЕТОННИЙ ЗАВОД СИХОВА";
+  document.getElementById("objectiveText").textContent =
+    "Перенеси сирник на платформу, заглуши три труби, поверни клапан і вимкни завод.";
+  document.getElementById("intro").classList.add("hidden");
+  document.getElementById("pause").classList.remove("show");
+  audioStart();
+  showToast("E · ПІДНЯТИ / ПОСТАВИТИ СИРНИК · WASD · РУХ");
+  last = performance.now();
+  scheduleLoop();
+}
+function factoryGoal(m) {
+  if (m.phase === 0 && m.carrying) return m.plate;
+  if (m.phase === 1 && m.carrying)
+    return m.sockets.find((q) => !q.plugged) || m.valve;
+  if (m.phase === 0 || m.phase === 1) {
+    const choices = [...m.dropped, ...(m.supply.count > 0 ? [m.supply] : [])];
+    return choices.reduce(
+      (best, q) =>
+        Math.hypot(q.x - m.player.x, q.y - m.player.y) <
+        (best ? Math.hypot(best.x - m.player.x, best.y - m.player.y) : Infinity)
+          ? q
+          : best,
+      null,
+    );
+  }
+  if (m.phase === 2) return m.valve;
+  if (m.phase === 3) return m.panel;
+  return null;
+}
+function factoryPhaseName(m) {
+  return (
+    [
+      "1/4 · ЗВАЖ ПЛАТФОРМУ",
+      "2/4 · ЗАГЛУШИ ТРУБИ 1 → 2 → 3",
+      "3/4 · ПОВЕРНИ КЛАПАН",
+      "4/4 · ВИМКНИ ЗАВОД",
+    ][m.phase] || "ЗАВОД ЗНЕШКОДЖЕНО"
+  );
+}
+function factoryInteract(m) {
+  const p = m.player,
+    dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+  if ((m.phase === 0 || m.phase === 1) && m.carrying) {
+    if (m.phase === 0 && dist(p, m.plate) < 80) {
+      m.carrying = false;
+      m.plate.active = true;
+      m.phase = 1;
+      m.score += 100;
+      score += 100;
+      document.getElementById("objectiveTitle").textContent =
+        factoryPhaseName(m);
+      document.getElementById("delivered").textContent = "1 / 5";
+      showToast("ПЛАТФОРМУ ЗВАЖЕНО · ТЕПЕР ЗАГЛУШИ ТРИ ТРУБИ");
+      chime();
+      return;
+    }
+    if (m.phase === 1) {
+      const i = m.sockets.findIndex((q) => !q.plugged);
+      if (i >= 0 && dist(p, m.sockets[i]) < 82) {
+        m.carrying = false;
+        m.sockets[i].plugged = true;
+        m.score += 100;
+        score += 100;
+        const n = m.sockets.filter((q) => q.plugged).length;
+        document.getElementById("delivered").textContent = `${1 + n} / 5`;
+        if (n === 3) {
+          m.phase = 2;
+          document.getElementById("objectiveTitle").textContent =
+            factoryPhaseName(m);
+          showToast("ТРУБИ ЗАГЛУШЕНО · ДІСТАНЬСЯ ДО КЛАПАНА");
+        } else showToast(`ТРУБУ ${i + 1} ЗАГЛУШЕНО · ЗАЛИШИЛОСЯ ${3 - n}`);
+        chime();
+        return;
+      }
+    }
+  } else if ((m.phase === 0 || m.phase === 1) && !m.carrying) {
+    let pick = -1,
+      best = 73;
+    for (let i = 0; i < m.dropped.length; i++) {
+      const d = dist(p, m.dropped[i]);
+      if (d < best) {
+        best = d;
+        pick = i;
+      }
+    }
+    if (pick >= 0) {
+      m.dropped.splice(pick, 1);
+      m.carrying = true;
+      showToast("СИРНИК ПІДНЯТО · НЕСИ ДО ПІДСВІЧЕНОЇ ЦІЛІ");
+      return;
+    }
+    if (m.supply.count > 0 && dist(p, m.supply) < 84) {
+      m.supply.count--;
+      m.carrying = true;
+      showToast(`ПОРЦІЮ ВЗЯТО · НА СТІЙЦІ ЩЕ ${m.supply.count}`);
+      chime();
+      return;
+    }
+  }
+  if (m.phase === 2 && !m.carrying && dist(p, m.valve) < 90) {
+    m.valve.turned = true;
+    m.phase = 3;
+    m.score += 150;
+    score += 150;
+    document.getElementById("objectiveTitle").textContent = factoryPhaseName(m);
+    document.getElementById("delivered").textContent = "4 / 5";
+    showToast("ПОТІК СПРЯМОВАНО В РЕЗЕРВУАР · ДО ПУЛЬТА");
+    chime();
+    return;
+  }
+  if (m.phase === 3 && !m.carrying && dist(p, m.panel) < 90) {
+    m.panel.active = true;
+    m.score += 250;
+    score += 250;
+    document.getElementById("delivered").textContent = "5 / 5";
+    document.getElementById("score").textContent = String(score).padStart(
+      4,
+      "0",
+    );
+    showVrVictory();
+  }
+}
+function updateVrArcade(dt, t) {
+  const m = vrMaze,
+    p = m.player,
+    { x: dx, y: dy } = movementAxes(),
+    speed = m.carrying ? 220 : 320;
+  p.invuln = Math.max(0, p.invuln - dt);
+  vrDashCooldown = Math.max(0, vrDashCooldown - dt);
+  if (dx || dy) {
+    p.dir = Math.atan2(dy, dx);
+    p.x = clamp(p.x + dx * speed * dt, 56, W - 56);
+    p.y = clamp(p.y + dy * speed * dt, 190, H - 55);
+  }
+  if (
+    (keyDown("ShiftLeft") || keyDown("ShiftRight") || vrDashPressed) &&
+    vrDashCooldown <= 0
+  ) {
+    const n = Math.hypot(dx, dy) || 1,
+      dash = m.carrying ? 95 : 155;
+    p.x = clamp(p.x + ((dx || Math.cos(p.dir)) / n) * dash, 56, W - 56);
+    p.y = clamp(p.y + ((dy || Math.sin(p.dir)) / n) * dash, 190, H - 55);
+    p.invuln = Math.max(p.invuln, 0.4);
+    vrDashCooldown = 1.1;
+    vrDashPressed = false;
+    tone(260, 0.08, "triangle", 0.03, 180);
+  }
+  vrDashPressed = false;
+  m.clock += dt;
+  if (interactPressed) {
+    interactPressed = false;
+    factoryInteract(m);
+  }
+  if (m.plate.active) {
+    m.hazardTimer -= dt;
+    if (m.hazardTimer <= 0) {
+      const lane = Math.random() < 0.5 ? 468 : 585,
+        direction = Math.random() < 0.5 ? 1 : -1;
+      m.hazards.push({
+        x: direction > 0 ? -44 : W + 44,
+        y: lane,
+        vx: direction * (190 + m.sockets.filter((q) => q.plugged).length * 28),
+        r: 23,
+        phase: Math.random() * 7,
+      });
+      if (m.phase >= 2 && Math.random() < 0.42)
+        m.hazards.push({
+          x: 120 + Math.random() * (W - 240),
+          y: 190,
+          vy: 260,
+          r: 17,
+          warning: 0.45,
+        });
+      m.hazardTimer = Math.max(
+        0.62,
+        1.18 - m.sockets.filter((q) => q.plugged).length * 0.12,
+      );
+    }
+  }
+  for (const h of m.hazards) {
+    h.phase += dt * 7;
+    if (h.warning > 0) h.warning -= dt;
+    else {
+      h.x += (h.vx || 0) * dt;
+      h.y += (h.vy || 0) * dt;
+    }
+    if (
+      p.invuln <= 0 &&
+      !h.warning &&
+      Math.hypot(p.x - h.x, p.y - h.y) < h.r + 21
+    ) {
+      p.hp--;
+      p.invuln = 1.1;
+      if (m.carrying) {
+        m.carrying = false;
+        m.dropped.push({ x: p.x, y: p.y + 18 });
+        showToast("УДАР! СИРНИК ВПАВ — ПІДБЕРИ ЙОГО");
+      } else showToast(`БЕТОННИЙ БЛОК · ${p.hp} ♥`);
+      h.x = -100;
+      tone(120, 0.16, "sawtooth", 0.03, -80);
+      if (p.hp <= 0) {
+        showVrFail();
+        return;
+      }
+    }
+  }
+  m.hazards = m.hazards.filter(
+    (h) => h.x > -85 && h.x < W + 85 && h.y < H + 35,
+  );
+  document.getElementById("delivered").textContent =
+    m.phase === 0
+      ? "0 / 5"
+      : m.phase === 1
+        ? `${1 + m.sockets.filter((q) => q.plugged).length} / 5`
+        : m.phase === 2
+          ? "4 / 5"
+          : "4 / 5";
+  document.getElementById("score").textContent = String(score).padStart(4, "0");
+  if (toastTimer > 0) {
+    toastTimer -= dt;
+    if (toastTimer <= 0)
+      document.getElementById("toast").classList.remove("show");
+  }
+}
+function drawVrArcade(t) {
+  drawVrGameField(t);
+}
+function drawBasementBackground(t) {
+  ctx.clearRect(0, 0, W, H);
+  const wall = ctx.createLinearGradient(0, 0, 0, 640);
+  wall.addColorStop(0, "#25303a");
+  wall.addColorStop(1, "#414047");
+  ctx.fillStyle = wall;
+  ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = "#1a232b";
+  ctx.fillRect(0, 0, W, 24);
+  for (let i = 0; i < 8; i++) {
+    const x = i * 177 + Math.sin(i * 7) * 9;
+    ctx.strokeStyle = i % 2 ? "#68706c" : "#5b6262";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x, 36);
+    ctx.lineTo(x + 12, 78);
+    ctx.lineTo(x - 3, 107);
+    ctx.lineTo(x + 15, 132);
+    ctx.stroke();
+    ctx.fillStyle = "rgba(111,144,139,.12)";
+    ctx.beginPath();
+    ctx.ellipse(x + 24, 117, 23, 48, 0.2, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.fillStyle = "#151f26";
+  ctx.fillRect(0, 628, W, 172);
+  ctx.fillStyle = "#465052";
+  for (let x = 0; x < W; x += 82) {
+    ctx.strokeStyle = "#323b3d";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x, 636, 80, 74);
+  }
+  ctx.fillStyle = "rgba(70,135,147,.25)";
+  ctx.beginPath();
+  ctx.ellipse(840, 755, 210, 26, -0.08, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = "rgba(147,212,221,.36)";
+  ctx.beginPath();
+  ctx.ellipse(840, 752, 164, 13, -0.08, Math.PI, Math.PI * 2);
+  ctx.stroke();
+  ctx.fillStyle = "#18212a";
+  rounded(ctx, 944, 15, 310, 120, 12);
+  ctx.fillStyle = "#18233a";
+  rounded(ctx, 957, 25, 284, 98, 7);
+  ctx.fillStyle = "#28385a";
+  ctx.beginPath();
+  ctx.moveTo(970, 112);
+  ctx.lineTo(1001, 83);
+  ctx.lineTo(1038, 92);
+  ctx.lineTo(1072, 51);
+  ctx.lineTo(1104, 92);
+  ctx.lineTo(1130, 76);
+  ctx.lineTo(1160, 106);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = "#29374b";
+  ctx.fillRect(1058, 43, 29, 69);
+  ctx.fillStyle = "#ffdf8b";
+  ctx.fillRect(1065, 65, 6, 10);
+  ctx.fillRect(1076, 65, 6, 10);
+  ctx.fillStyle = "#dce9d0";
+  ctx.fillRect(1070, 31, 4, 16);
+  ctx.fillRect(1064, 36, 16, 3);
+  ctx.fillStyle = "#222d3c";
+  ctx.fillRect(969, 113, 275, 7);
+  ctx.fillStyle = "#e9c875";
+  ctx.font = "bold 10px Arial,sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText("ЦЕРКВА ЗА ВІКНОМ", 1100, 130);
+  drawBasementScooter(238, 741);
+  drawBasementBackpack(1055, 744);
+  drawBasementViewer(640, 726, t);
+}
+function drawBasementViewer(x, y, t) {
+  ctx.save();
+  ctx.translate(x, y + Math.sin(t * 1.3) * 1.5);
+  ctx.fillStyle = "#080d14";
+  ctx.beginPath();
+  ctx.ellipse(0, 54, 83, 18, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#202b39";
+  rounded(ctx, -56, 8, 112, 70, 25);
+  ctx.fillStyle = "#3b5962";
+  rounded(ctx, -40, 5, 80, 35, 16);
+  ctx.fillStyle = "#202831";
+  ctx.beginPath();
+  ctx.arc(0, -12, 37, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#d2aa80";
+  ctx.beginPath();
+  ctx.arc(0, -10, 28, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#151e2c";
+  rounded(ctx, -39, -28, 78, 32, 12);
+  ctx.fillStyle = "#45ddeb";
+  rounded(ctx, -30, -23, 60, 19, 8);
+  ctx.fillStyle = "#172633";
+  ctx.fillRect(-3, -22, 6, 18);
+  ctx.strokeStyle = "#89999a";
+  ctx.lineWidth = 5;
+  ctx.beginPath();
+  ctx.arc(0, -17, 43, Math.PI, Math.PI * 2);
+  ctx.stroke();
+  ctx.fillStyle = "#bf8a52";
+  ctx.beginPath();
+  ctx.arc(-52, 2, 5, 0, Math.PI * 2);
+  ctx.arc(52, 2, 5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+function drawBasementScooter(x, y) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.fillStyle = "#080d12";
+  ctx.beginPath();
+  ctx.arc(-62, 0, 21, 0, Math.PI * 2);
+  ctx.arc(62, 0, 21, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = "#829294";
+  ctx.lineWidth = 5;
+  ctx.beginPath();
+  ctx.arc(-62, 0, 13, 0, Math.PI * 2);
+  ctx.arc(62, 0, 13, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.strokeStyle = "#41dbc9";
+  ctx.lineWidth = 11;
+  ctx.beginPath();
+  ctx.moveTo(-60, -5);
+  ctx.lineTo(54, -5);
+  ctx.stroke();
+  ctx.strokeStyle = "#d4ddd2";
+  ctx.lineWidth = 6;
+  ctx.beginPath();
+  ctx.moveTo(50, -7);
+  ctx.lineTo(43, -59);
+  ctx.lineTo(70, -64);
+  ctx.stroke();
+  ctx.strokeStyle = "#edc96c";
+  ctx.lineWidth = 7;
+  ctx.beginPath();
+  ctx.moveTo(55, -64);
+  ctx.lineTo(87, -64);
+  ctx.stroke();
+  ctx.restore();
+}
+function drawBasementBackpack(x, y) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.fillStyle = "#101820";
+  ctx.beginPath();
+  ctx.ellipse(0, 30, 48, 13, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#293845";
+  rounded(ctx, -36, -39, 72, 68, 17);
+  ctx.fillStyle = "#a96d42";
+  rounded(ctx, -27, -32, 54, 54, 13);
+  ctx.fillStyle = "#e5bc6d";
+  rounded(ctx, -12, -25, 24, 8, 3);
+  ctx.fillStyle = "#172834";
+  rounded(ctx, -19, -7, 38, 27, 7);
+  ctx.fillStyle = "#d6a953";
+  ctx.fillRect(-3, -5, 6, 23);
+  ctx.restore();
+}
+function drawVrSyrnyk(x, y, size) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.shadowColor = "#ffc55f";
+  ctx.shadowBlur = 12;
+  for (const [dx, dy, r] of [
+    [-size * 0.38, size * 0.12, size * 0.39],
+    [size * 0.38, size * 0.12, size * 0.39],
+    [0, -size * 0.3, size * 0.4],
+  ]) {
+    ctx.fillStyle = "#a85e36";
+    ctx.beginPath();
+    ctx.arc(dx, dy, r + 2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#f3c66f";
+    ctx.beginPath();
+    ctx.arc(dx, dy, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#fff0bf";
+    ctx.beginPath();
+    ctx.arc(dx - 2, dy - 2, r * 0.4, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+function drawVrGameField(t) {
+  const m = vrMaze,
+    p = m.player,
+    nextSocket = m.sockets.find((q) => !q.plugged),
+    ctx2 = ctx;
+  ctx2.clearRect(0, 0, W, H);
+  ctx2.drawImage(m.backdrop, 0, 0);
+  for (const y of [468, 585]) {
+    ctx2.fillStyle = "#17191e";
+    rounded(ctx2, 80, y - 31, W - 160, 62, 9);
+    ctx2.fillStyle = "#504b53";
+    rounded(ctx2, 88, y - 24, W - 176, 48, 7);
+    ctx2.save();
+    ctx2.beginPath();
+    ctx2.roundRect(88, y - 24, W - 176, 48, 7);
+    ctx2.clip();
+    for (let x = -50; x < W + 40; x += 48) {
+      const xx = x + ((t * 135) % (W + 90));
+      ctx2.fillStyle = "#7c7178";
+      ctx2.fillRect(xx, y - 20, 27, 40);
+      ctx2.fillStyle = "#332a32";
+      ctx2.fillRect(xx + 29, y - 20, 6, 40);
+    }
+    ctx2.restore();
+    ctx2.strokeStyle = "#f1499b";
+    ctx2.lineWidth = 2;
+    ctx2.strokeRect(84, y - 28, W - 168, 56);
+  }
+  ctx2.strokeStyle = m.plate.active ? "#59f2df" : "#826579";
+  ctx2.lineWidth = 7;
+  ctx2.shadowColor = ctx2.strokeStyle;
+  ctx2.shadowBlur = 13;
+  ctx2.beginPath();
+  ctx2.moveTo(195, 502);
+  ctx2.lineTo(195, 420);
+  ctx2.lineTo(300, 420);
+  ctx2.lineTo(300, 347);
+  ctx2.lineTo(980, 347);
+  ctx2.lineTo(980, 260);
+  ctx2.stroke();
+  ctx2.shadowBlur = 0;
+  for (let i = 0; i < 3; i++) {
+    const q = m.sockets[i];
+    ctx2.strokeStyle = q.plugged
+      ? "#58f3b3"
+      : q === nextSocket
+        ? "#ff4ca7"
+        : "#38dce6";
+    ctx2.lineWidth = 8;
+    ctx2.beginPath();
+    ctx2.moveTo(q.x, 347);
+    ctx2.lineTo(q.x, q.y + 28);
+    ctx2.stroke();
+    ctx2.fillStyle = "#282b30";
+    rounded(ctx2, q.x - 43, q.y - 37, 86, 74, 12);
+    ctx2.strokeStyle = q.plugged
+      ? "#5affb5"
+      : q === nextSocket
+        ? "#ff4ca7"
+        : "#56e8e9";
+    ctx2.lineWidth = 4;
+    ctx2.strokeRect(q.x - 39, q.y - 33, 78, 66);
+    ctx2.fillStyle = q.plugged ? "#5affb5" : "#222b31";
+    ctx2.beginPath();
+    ctx2.arc(q.x, q.y, 19, 0, Math.PI * 2);
+    ctx2.fill();
+    ctx2.strokeStyle = q.plugged ? "#d5ffde" : "#cfbca4";
+    ctx2.lineWidth = 4;
+    ctx2.beginPath();
+    ctx2.arc(q.x, q.y, 12, 0, Math.PI * 2);
+    ctx2.stroke();
+    ctx2.fillStyle = "#f3e7ce";
+    ctx2.font = "bold 10px Arial";
+    ctx2.textAlign = "center";
+    ctx2.fillText(`ТРУБА ${i + 1}${q.plugged ? " · OK" : ""}`, q.x, q.y - 47);
+  }
+  ctx2.fillStyle = "#282b30";
+  rounded(ctx2, m.supply.x - 52, m.supply.y - 35, 104, 70, 10);
+  ctx2.strokeStyle = "#f2bc5c";
+  ctx2.lineWidth = 3;
+  ctx2.strokeRect(m.supply.x - 48, m.supply.y - 31, 96, 62);
+  ctx2.fillStyle = "#f2c870";
+  ctx2.font = "bold 10px Arial";
+  ctx2.textAlign = "center";
+  ctx2.fillText("СТІЙКА СИРНИКІВ", m.supply.x, m.supply.y - 43);
+  ctx2.fillStyle = "#fff2cc";
+  ctx2.fillText(`ПОРЦІЙ: ${m.supply.count}`, m.supply.x, m.supply.y + 53);
+  for (let i = 0; i < Math.min(3, m.supply.count); i++)
+    drawVrSyrnyk(m.supply.x - 20 + i * 20, m.supply.y, 9);
+  ctx2.fillStyle = m.plate.active ? "#55f0d5" : "#46424b";
+  rounded(ctx2, m.plate.x - 58, m.plate.y - 19, 116, 38, 8);
+  ctx2.strokeStyle = m.plate.active ? "#62fff0" : "#de9c56";
+  ctx2.lineWidth = 4;
+  ctx2.strokeRect(m.plate.x - 54, m.plate.y - 15, 108, 30);
+  ctx2.fillStyle = "#f6e5ca";
+  ctx2.font = "bold 10px Arial";
+  ctx2.textAlign = "center";
+  ctx2.fillText(
+    m.plate.active ? "ПЛАТФОРМА · АКТИВНА" : "ПЛАТФОРМА · ВАГА",
+    m.plate.x,
+    m.plate.y + 4,
+  );
+  ctx2.save();
+  ctx2.translate(m.valve.x, m.valve.y);
+  ctx2.fillStyle = "#252b31";
+  rounded(ctx2, -45, -40, 90, 80, 12);
+  ctx2.strokeStyle = m.valve.turned ? "#5af3b4" : "#ff559f";
+  ctx2.lineWidth = 5;
+  ctx2.strokeRect(-40, -35, 80, 70);
+  ctx2.strokeStyle = "#d7b68a";
+  ctx2.lineWidth = 8;
+  ctx2.beginPath();
+  ctx2.arc(0, 0, 22, 0, Math.PI * 2);
+  ctx2.stroke();
+  ctx2.beginPath();
+  ctx2.moveTo(-28, 0);
+  ctx2.lineTo(28, 0);
+  ctx2.moveTo(0, -28);
+  ctx2.lineTo(0, 28);
+  ctx2.stroke();
+  ctx2.fillStyle = "#fff0d5";
+  ctx2.font = "bold 10px Arial";
+  ctx2.textAlign = "center";
+  ctx2.fillText(
+    m.valve.turned ? "ПОТІК → РЕЗЕРВУАР" : "КЛАПАН · ЗАКРИТИЙ",
+    0,
+    55,
+  );
+  ctx2.restore();
+  ctx2.fillStyle = m.panel.active ? "#5af3b4" : "#222a30";
+  rounded(ctx2, m.panel.x - 55, m.panel.y - 28, 110, 56, 10);
+  ctx2.strokeStyle = m.panel.active ? "#5af3b4" : "#ff4d9d";
+  ctx2.lineWidth = 4;
+  ctx2.strokeRect(m.panel.x - 51, m.panel.y - 24, 102, 48);
+  ctx2.fillStyle = "#f4dfbd";
+  ctx2.font = "bold 10px Arial";
+  ctx2.textAlign = "center";
+  ctx2.fillText(
+    m.panel.active ? "ЗАВОД ВИМКНЕНО" : "АВАРІЙНИЙ ПУЛЬТ",
+    m.panel.x,
+    m.panel.y + 4,
+  );
+  ctx2.fillStyle = "#4b5360";
+  rounded(ctx2, 242, 540, 116, 42, 7);
+  ctx2.fillStyle = m.plate.active ? "#ff68b1" : "#c69054";
+  ctx2.beginPath();
+  ctx2.arc(m.plate.x, m.plate.y, 18, 0, Math.PI * 2);
+  ctx2.fill();
+  for (const q of m.dropped) drawVrSyrnyk(q.x, q.y, 17);
+  for (const h of m.hazards) {
+    if (h.warning > 0) {
+      ctx2.save();
+      ctx2.globalAlpha = 0.4 + 0.3 * Math.sin(t * 19);
+      ctx2.fillStyle = "#ff465f";
+      ctx2.beginPath();
+      ctx2.arc(h.x, h.y + 35, 28, 0, Math.PI * 2);
+      ctx2.fill();
+      ctx2.fillStyle = "#fff";
+      ctx2.font = "bold 9px Arial";
+      ctx2.textAlign = "center";
+      ctx2.fillText("УВАГА", h.x, h.y + 38);
+      ctx2.restore();
+    } else {
+      ctx2.save();
+      ctx2.translate(h.x, h.y);
+      ctx2.rotate(Math.sin(h.phase) * 0.08);
+      ctx2.fillStyle = "#99928b";
+      rounded(ctx2, -h.r, -h.r, h.r * 2, h.r * 2, 5);
+      ctx2.fillStyle = "#c5b9a4";
+      ctx2.fillRect(-h.r + 4, -h.r + 7, h.r * 2 - 8, 5);
+      ctx2.restore();
+    }
+  }
+  drawTrainingAvatar(p.x, p.y, t);
+  if (m.carrying) drawVrSyrnyk(p.x + 20, p.y - 30, 17);
+  const prompt = (x, y, text) => {
+    ctx2.fillStyle = "#101923e8";
+    rounded(ctx2, x - 66, y - 18, 132, 22, 6);
+    ctx2.fillStyle = "#fff";
+    ctx2.font = "bold 10px Arial";
+    ctx2.textAlign = "center";
+    ctx2.fillText(text, x, y - 3);
+  };
+  if (
+    (m.phase === 0 || m.phase === 1) &&
+    !m.carrying &&
+    Math.hypot(p.x - m.supply.x, p.y - m.supply.y) < 150
+  )
+    prompt(
+      m.supply.x,
+      m.supply.y - 56,
+      m.dropped.length ? "E · ПІДНЯТИ" : "E · ВЗЯТИ СИРНИК",
+    );
+  if (!m.carrying && m.dropped.length) {
+    let near = null,
+      nd = 145;
+    for (const item of m.dropped) {
+      const d = Math.hypot(p.x - item.x, p.y - item.y);
+      if (d < nd) {
+        near = item;
+        nd = d;
+      }
+    }
+    if (near) prompt(near.x, near.y - 30, "E · ПІДНЯТИ СИРНИК");
+  }
+  if (
+    m.carrying &&
+    m.phase === 0 &&
+    Math.hypot(p.x - m.plate.x, p.y - m.plate.y) < 145
+  )
+    prompt(m.plate.x, m.plate.y - 45, "E · ПОСТАВИТИ НА ПЛАТФОРМУ");
+  if (m.carrying && m.phase === 1) {
+    const q = m.sockets.find((v) => !v.plugged);
+    if (q && Math.hypot(p.x - q.x, p.y - q.y) < 150)
+      prompt(q.x, q.y - 57, `E · ЗАГЛУШИТИ ТРУБУ ${m.sockets.indexOf(q) + 1}`);
+  }
+  if (m.phase === 2 && Math.hypot(p.x - m.valve.x, p.y - m.valve.y) < 150)
+    prompt(m.valve.x, m.valve.y - 63, "E · ПОВЕРНУТИ КЛАПАН");
+  if (m.phase === 3 && Math.hypot(p.x - m.panel.x, p.y - m.panel.y) < 150)
+    prompt(m.panel.x, m.panel.y - 55, "E · ВИМКНУТИ ЗАВОД");
+  const target = factoryGoal(m);
+  if (target) {
+    const d = Math.hypot(target.x - p.x, target.y - p.y);
+    if (d > 68) {
+      ctx2.save();
+      ctx2.strokeStyle = "#55f1df99";
+      ctx2.lineWidth = 3;
+      ctx2.setLineDash([8, 7]);
+      ctx2.beginPath();
+      ctx2.moveTo(p.x, p.y);
+      ctx2.lineTo(target.x, target.y);
+      ctx2.stroke();
+      ctx2.setLineDash([]);
+      ctx2.strokeStyle = "#ffe078";
+      ctx2.lineWidth = 3;
+      ctx2.beginPath();
+      ctx2.arc(target.x, target.y, 20 + Math.sin(t * 5) * 3, 0, Math.PI * 2);
+      ctx2.stroke();
+      ctx2.restore();
+    }
+  }
+  ctx2.fillStyle = "#09131bee";
+  rounded(ctx2, 18, 15, 392, 112, 11);
+  ctx2.fillStyle = "#f5ddbf";
+  ctx2.font = "900 14px Arial";
+  ctx2.textAlign = "left";
+  ctx2.fillText("БЕТОННИЙ ЗАВОД СИХОВА · VR", 31, 38);
+  ctx2.fillStyle = "#69eee1";
+  ctx2.font = "bold 11px Arial";
+  ctx2.fillText(factoryPhaseName(m), 31, 59);
+  ctx2.fillStyle = "#fff";
+  ctx2.font = "bold 11px Arial";
+  ctx2.fillText(
+    `ЖИТТЯ ${"♥ ".repeat(p.hp)}  ·  В РУКАХ ${m.carrying ? "СИРНИК" : "НІЧОГО"}  ·  ОЧКИ ${String(m.score).padStart(4, "0")}`,
+    31,
+    81,
+  );
+  ctx2.fillStyle = "#2a373b";
+  rounded(ctx2, 31, 92, 364, 8, 4);
+  ctx2.fillStyle = "#ff4a9f";
+  rounded(ctx2, 33, 94, 360 * (m.phase / 4), 4, 2);
+  ctx2.fillStyle = "#f4e1c5";
+  ctx2.font = "bold 10px Arial";
+  ctx2.fillText(
+    "WASD · РУХ     E · ПІДНЯТИ / ПОСТАВИТИ     SHIFT · РИВОК",
+    31,
+    116,
+  );
+  ctx2.fillStyle = "#12171cdd";
+  rounded(ctx2, 412, 750, 456, 28, 7);
+  ctx2.fillStyle = "#ffe4aa";
+  ctx2.font = "bold 10px Arial";
+  ctx2.textAlign = "center";
+  ctx2.fillText(
+    m.phase === 0
+      ? "ДОНЕСИ СИРНИК ДО ВАГОВОЇ ПЛАТФОРМИ"
+      : m.phase === 1
+        ? "ВСТАВ ТРИ СИРНИКИ-ЗАГЛУШКИ В ПІДСВІЧЕНІ ТРУБИ"
+        : m.phase === 2
+          ? "ПОВЕРНИ КЛАПАН ДО ПОТОКУ В РЕЗЕРВУАР"
+          : m.phase === 3
+            ? "ДОБЕРИСЯ ДО АВАРІЙНОГО ПУЛЬТА"
+            : "ЗАВОД ЗУПИНЕНО",
+    640,
+    768,
+  );
+}
+function drawVrEnemy(e, t) {
+  ctx.save();
+  ctx.translate(e.x, e.y + Math.sin(t * 5 + e.phase) * 4);
+  ctx.shadowColor = "#ff46c8";
+  ctx.shadowBlur = 14;
+  ctx.fillStyle = e.hp > 1 ? "#b04ce0" : "#ed4fab";
+  ctx.beginPath();
+  ctx.ellipse(0, 0, 22, 16, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#ffe788";
+  ctx.fillRect(-11, -5, 7, 7);
+  ctx.fillRect(4, -5, 7, 7);
+  ctx.strokeStyle = "#f8a1dc";
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(-15, 9);
+  ctx.lineTo(-28, 20);
+  ctx.moveTo(15, 9);
+  ctx.lineTo(28, 20);
+  ctx.stroke();
+  ctx.restore();
+}
+function drawVrBoss(b, t) {
+  ctx.save();
+  ctx.translate(b.x, b.y + Math.sin(t * 2) * 8);
+  ctx.shadowColor = "#ff9a55";
+  ctx.shadowBlur = 24;
+  ctx.fillStyle = "#575960";
+  ctx.beginPath();
+  ctx.moveTo(-94, 48);
+  ctx.lineTo(-92, -12);
+  ctx.lineTo(-72, -12);
+  ctx.lineTo(-72, -68);
+  ctx.lineTo(-42, -68);
+  ctx.lineTo(-42, -35);
+  ctx.lineTo(-22, -35);
+  ctx.lineTo(-22, -91);
+  ctx.lineTo(17, -91);
+  ctx.lineTo(17, -51);
+  ctx.lineTo(43, -51);
+  ctx.lineTo(43, -76);
+  ctx.lineTo(74, -76);
+  ctx.lineTo(74, -16);
+  ctx.lineTo(94, -16);
+  ctx.lineTo(94, 48);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = "#8a8b89";
+  ctx.fillRect(-67, -58, 21, 96);
+  ctx.fillRect(-15, -80, 27, 118);
+  ctx.fillRect(49, -65, 20, 103);
+  ctx.fillStyle = "#d3a36d";
+  ctx.fillRect(-78, -57, 4, 88);
+  ctx.fillRect(-6, -77, 4, 110);
+  ctx.fillRect(58, -62, 4, 93);
+  ctx.fillStyle = "#303640";
+  ctx.fillRect(-105, 43, 210, 16);
+  ctx.fillStyle = "#ad5e47";
+  ctx.fillRect(-82, 16, 48, 20);
+  ctx.fillRect(30, 9, 49, 27);
+  ctx.strokeStyle = "#d4c5a0";
+  ctx.lineWidth = 8;
+  ctx.beginPath();
+  ctx.moveTo(-70, -45);
+  ctx.lineTo(-38, -15);
+  ctx.lineTo(-8, -15);
+  ctx.lineTo(8, -43);
+  ctx.lineTo(44, -43);
+  ctx.stroke();
+  ctx.fillStyle = "#efbe5e";
+  for (const x of [-79, -54, -9, 15, 56, 78]) ctx.fillRect(x, 49, 8, 5);
+  ctx.fillStyle = "#fa6d4f";
+  ctx.beginPath();
+  ctx.arc(0, -96, 9 + Math.sin(t * 12) * 2, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+  ctx.fillStyle = "#362a32";
+  rounded(ctx, 430, 68, 420, 13, 7);
+  ctx.fillStyle = "#ff9a55";
+  rounded(ctx, 432, 70, 416 * (b.hp / b.maxHp), 9, 5);
+  ctx.fillStyle = "#fff";
+  ctx.font = "bold 13px Arial,sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText("БЕТОННИЙ ЗАВОД «СМІЛАБЕТОН»", 640, 62);
+}
+function showVrVictory() {
+  running = false;
+  gameEnded = true;
+  const layer = document.getElementById("intro");
+  layer.classList.remove("hidden");
+  layer.innerHTML = `<section class="card"><div class="eyebrow">АРКАДУ ПРОЙДЕНО · ПОВЕРНЕННЯ ДО ПІДВАЛУ</div><h1>Бетонний завод зупинено.<br><em>Шолом знятий.</em></h1><p>Герой зважує платформу сирником, заглушає три бетонні труби, повертає клапан і натискає аварійне вимкнення. За ними — нічне повітря та дорога до лісу.</p><div class="mission"><span>🥞 Платформа й труби: <b>заблоковано</b></span><span>🏭 Клапан і завод: <b>вимкнено</b></span></div><button id="leaveBasementBtn">ЗНЯТИ ШОЛОМ І ВИЙТИ　→</button><button id="replayVrBtn" class="secondary">ЩЕ ОДНА ГРА</button></section>`;
+  document.getElementById("leaveBasementBtn").onclick = showForestTransition;
+  document.getElementById("replayVrBtn").onclick = showVrCutscene;
+}
+function showForestTransition() {
+  const layer = document.getElementById("intro");
+  layer.classList.remove("hidden");
+  layer.innerHTML = `<section class="card"><div class="eyebrow">НАСТУПНИЙ МАРШРУТ · РІВЕНЬ 6</div><h1>Лісовий режим.<br><em>Бігти — тільки вперед.</em></h1><p>Герой виходить із підвалу, закидає рюкзак на плечі й рушає крізь нічний ліс до колючого паркану. З усіх боків наближаються прикордонники, собаки та ведмеді.</p><div class="mission"><span>🌲 Біжи знизу вгору</span><span>🥞 Відстрілюйся сирниками</span><span>✂️ Переріж дріт і тікай</span></div><button id="startForestBtn">УВІЙТИ ДО ЛІСУ　→</button><button id="forestMenuBtn" class="secondary">ДО ГОЛОВНОГО МЕНЮ</button></section>`;
+  document.getElementById("startForestBtn").onclick = startForestLevel;
+  document.getElementById("forestMenuBtn").onclick = () => location.reload();
+}
+function forestRoutePoints() {
+  return [
+    { x: 1300, y: 6200 },
+    ...forest.waypoints.map((q) => ({ x: q.x, y: q.y })),
+    { x: 1300, y: 400 },
+  ];
+}
+function forestRouteX(y) {
+  const pts = forestRoutePoints();
+  for (let i = 0; i < pts.length - 1; i++) {
+    const a = pts[i],
+      b = pts[i + 1];
+    if (y <= a.y && y >= b.y) {
+      const k = (a.y - y) / (a.y - b.y);
+      return a.x + (b.x - a.x) * k;
+    }
+  }
+  return 1300;
+}
+function forestGoal() {
+  return forest.checkpointIndex < forest.waypoints.length
+    ? forest.waypoints[forest.checkpointIndex]
+    : { x: 1300, y: 450 };
+}
+function startForestLevel() {
+  saveCampaignChapter(7);
+  focusGame();
+  document
+    .getElementById("game")
+    .classList.remove(
+      "germany-mode",
+      "training-mode",
+      "arcade-mode",
+      "cafe-mode",
+    );
+  document.getElementById("game").classList.add("forest-mode");
+  stage = 7;
+  gameEnded = false;
+  running = true;
+  paused = false;
+  const worldW = 2600,
+    worldH = 6700,
+    startY = 6200,
+    targetY = 400;
+  forest = {
+    worldW,
+    worldH,
+    startY,
+    targetY,
+    x: 1300,
+    y: startY,
+    cameraX: 660,
+    cameraY: startY - 520,
+    vx: 0,
+    vy: 0,
+    screenX: 640,
+    screenY: 520,
+    hp: 6,
+    invuln: 0,
+    shots: [],
+    enemies: [],
+    trees: [],
+    hazards: [],
+    tracks: [],
+    waypoints: [
+      { x: 2180, y: 5050, done: false },
+      { x: 470, y: 3720, done: false },
+      { x: 2140, y: 2410, done: false },
+      { x: 900, y: 1220, done: false },
+    ],
+    checkpointIndex: 0,
+    progress: 0,
+    dashCd: 0,
+    fire: 0,
+    spawn: 0.65,
+    ending: 0,
+    cutProgress: 0,
+    score: 0,
+    dirX: 0,
+    dirY: -1,
+    phase: "run",
+    mud: 0,
+    toastCooldown: 0,
+  };
+  for (let i = 0; i < 620; i++) {
+    const y = 100 + Math.random() * (worldH - 200),
+      x = 80 + Math.random() * (worldW - 160);
+    if (Math.abs(x - forestRouteX(y)) > 145)
+      forest.trees.push({
+        x,
+        y,
+        r: 22 + Math.random() * 42,
+        seed: Math.random() * 9,
+        kind: Math.random() < 0.2 ? "pine" : "broadleaf",
+      });
+  }
+  for (let i = 0; i < 46; i++) {
+    const y = 700 + Math.random() * 5200,
+      x = 100 + Math.random() * (worldW - 200);
+    forest.hazards.push({
+      x,
+      y,
+      type: i % 3 === 0 ? "bog" : "mine",
+      armed: true,
+      warn: 0,
+      phase: Math.random() * 8,
+    });
+  }
+  keys.clear();
+  boostPressed = false;
+  interactPressed = false;
+  document.querySelector(".mapbox").style.display = "none";
+  document.querySelector(".speed").style.display = "none";
+  setHint("");
+  document.getElementById("delivered").parentElement.firstChild.textContent =
+    "🌲 МАРКЕР ";
+  document.getElementById("delivered").textContent = "0 / 4";
+  document.getElementById("timer").textContent = "ЛІС";
+  document.getElementById("objectiveTitle").textContent = "ДО КОЛЮЧОГО ПАРКАНУ";
+  document.getElementById("objectiveText").textContent =
+    "Йди до чотирьох маяків за компасом. Тримайся стежки, кидай сирники й бережись мін та боліт.";
+  document.getElementById("intro").classList.add("hidden");
+  document.getElementById("pause").classList.remove("show");
+  audioStart();
+  showToast("WASD · РУХ  |  SPACE · СИРНИК  |  КОМПАС → НАСТУПНИЙ МАЯК");
+  last = performance.now();
+  scheduleLoop();
+}
+function spawnForestEnemy() {
+  const edge = Math.floor(Math.random() * 4),
+    r = 360 + Math.random() * 210,
+    cx = forest.x,
+    cy = forest.y;
+  let x =
+      edge === 0
+        ? cx - r
+        : edge === 1
+          ? cx + r
+          : cx + (Math.random() - 0.5) * 850,
+    y =
+      edge === 2
+        ? cy - r
+        : edge === 3
+          ? cy + r
+          : cy + (Math.random() - 0.5) * 620;
+  const type = ["guard", "dog", "bear", "dog"][Math.floor(Math.random() * 4)];
+  forest.enemies.push({
+    x: clamp(x, 35, forest.worldW - 35),
+    y: clamp(y, forest.targetY + 25, forest.startY - 20),
+    type,
+    hp: type === "bear" ? 3 : type === "guard" ? 2 : 1,
+    speed: type === "dog" ? 182 : type === "bear" ? 105 : 128,
+    phase: Math.random() * 8,
+    windup: type === "bear" ? 1 + Math.random() * 0.8 : 0,
+    charge: 0,
+    chargeX: 0,
+    chargeY: 0,
+    lastTrackX: x,
+    lastTrackY: y,
+  });
+}
+function updateForest(dt, t) {
+  if (forest.ending) {
+    forest.ending += dt;
+    forest.cameraX +=
+      (clamp(forest.x - W / 2, 0, forest.worldW - W) - forest.cameraX) *
+      Math.min(1, dt * 5);
+    forest.cameraY +=
+      (clamp(forest.y - H * 0.65, 0, forest.worldH - H) - forest.cameraY) *
+      Math.min(1, dt * 5);
+    if (forest.ending > 3.1) {
+      showForestVictory();
+      return;
+    }
+    return;
+  }
+  const axes = movementAxes(),
+    rawX = forest.phase === "cut" ? 0 : axes.x,
+    rawY = forest.phase === "cut" ? 0 : axes.y,
+    mag = Math.hypot(rawX, rawY) || 1,
+    dx = rawX / mag,
+    dy = rawY / mag;
+  if (dx || dy) {
+    forest.dirX = dx;
+    forest.dirY = dy;
+  }
+  const trailDist = Math.abs(forest.x - forestRouteX(forest.y)),
+    inBrush = trailDist > 185;
+  let speed = inBrush ? 205 : 365;
+  if (forest.mud > 0) {
+    forest.mud = Math.max(0, forest.mud - dt);
+    speed *= 0.58;
+  }
+  const oldX = forest.x,
+    oldY = forest.y;
+  forest.vx = dx * speed;
+  forest.vy = dy * speed;
+  if (
+    (keyDown("ShiftLeft") || keyDown("ShiftRight") || vrDashPressed) &&
+    forest.dashCd <= 0
+  ) {
+    const dash = inBrush ? 175 : 245;
+    forest.x = clamp(forest.x + dx * dash, 35, forest.worldW - 35);
+    forest.y = clamp(
+      forest.y + dy * dash,
+      forest.targetY + 25,
+      forest.startY - 20,
+    );
+    forest.dashCd = 1.05;
+    forest.invuln = Math.max(forest.invuln, 0.3);
+    vrDashPressed = false;
+    tone(330, 0.07, "triangle", 0.025, 150);
+  } else {
+    forest.x = clamp(forest.x + forest.vx * dt, 35, forest.worldW - 35);
+    forest.y = clamp(
+      forest.y + forest.vy * dt,
+      forest.targetY + 25,
+      forest.startY - 20,
+    );
+  }
+  vrDashPressed = false;
+  forest.dashCd = Math.max(0, forest.dashCd - dt);
+  forest.invuln = Math.max(0, forest.invuln - dt);
+  forest.fire = Math.max(0, forest.fire - dt);
+  forest.progress = forest.startY - forest.y;
+  const aim = Math.hypot(forest.dirX, forest.dirY) || 1;
+  if ((keyDown("Space") || boostPressed) && forest.fire <= 0) {
+    forest.shots.push({
+      x: forest.x + (forest.dirX / aim) * 28,
+      y: forest.y + (forest.dirY / aim) * 28,
+      vx: (forest.dirX / aim) * 830,
+      vy: (forest.dirY / aim) * 830,
+      life: 1.3,
+    });
+    forest.fire = 0.24;
+    tone(580, 0.05, "triangle", 0.025, 120);
+  }
+  boostPressed = false;
+  for (const q of forest.shots) {
+    q.x += q.vx * dt;
+    q.y += q.vy * dt;
+    q.life -= dt;
+  }
+  forest.shots = forest.shots.filter(
+    (q) => q.life > 0 && Math.hypot(q.x - forest.x, q.y - forest.y) < 1050,
+  );
+  if (Math.hypot(forest.x - oldX, forest.y - oldY) > 24) {
+    forest.tracks.push({ x: forest.x, y: forest.y, type: "hero", life: 7 });
+    if (forest.tracks.length > 170) forest.tracks.shift();
+  }
+  for (const q of forest.tracks) q.life -= dt;
+  forest.tracks = forest.tracks.filter((q) => q.life > 0);
+  forest.spawn -= dt;
+  if (
+    forest.phase === "run" &&
+    forest.spawn <= 0 &&
+    forest.enemies.length < 10
+  ) {
+    forest.spawn = Math.max(0.56, 0.92 - forest.checkpointIndex * 0.06);
+    spawnForestEnemy();
+    if (forest.checkpointIndex > 1 && Math.random() < 0.38) spawnForestEnemy();
+  }
+  for (let i = forest.enemies.length - 1; i >= 0; i--) {
+    const e = forest.enemies[i];
+    e.phase += dt * 4.5;
+    const vx = forest.x - e.x,
+      vy = forest.y - e.y,
+      d = Math.hypot(vx, vy) || 1;
+    if (e.type === "bear") {
+      if (e.charge > 0) {
+        e.x += e.chargeX * e.speed * 3.2 * dt;
+        e.y += e.chargeY * e.speed * 3.2 * dt;
+        e.charge -= dt;
+      } else if (e.windup > 0) {
+        e.windup -= dt;
+        if (e.windup <= 0) {
+          const n = Math.hypot(vx, vy) || 1;
+          e.chargeX = vx / n;
+          e.chargeY = vy / n;
+          e.charge = 0.62;
+        }
+      } else if (d < 410) {
+        e.windup = 0.95;
+      }
+    } else {
+      const lead = e.type === "guard" ? 0.5 : 0,
+        tx = forest.x + forest.vx * lead,
+        ty = forest.y + forest.vy * lead,
+        n = Math.hypot(tx - e.x, ty - e.y) || 1;
+      e.x += ((tx - e.x) / n) * e.speed * dt + Math.sin(e.phase) * 9 * dt;
+      e.y += ((ty - e.y) / n) * e.speed * dt;
+    }
+    if (Math.hypot(e.x - e.lastTrackX, e.y - e.lastTrackY) > 35) {
+      forest.tracks.push({ x: e.x, y: e.y, type: e.type, life: 5 });
+      if (forest.tracks.length > 280) forest.tracks.shift();
+      e.lastTrackX = e.x;
+      e.lastTrackY = e.y;
+    }
+    for (let j = forest.shots.length - 1; j >= 0; j--) {
+      const q = forest.shots[j];
+      if (Math.hypot(q.x - e.x, q.y - e.y) < 34) {
+        forest.shots.splice(j, 1);
+        e.hp--;
+        if (e.hp <= 0) {
+          forest.enemies.splice(i, 1);
+          score += 120;
+          forest.score += 120;
+          chime();
+          break;
+        }
+      }
+    }
+    if (!forest.enemies.includes(e)) continue;
+    if (forest.invuln <= 0 && Math.hypot(forest.x - e.x, forest.y - e.y) < 38) {
+      forest.hp--;
+      forest.invuln = 1.12;
+      forest.x = clamp(
+        forest.x + (forest.x - e.x) * 0.8,
+        35,
+        forest.worldW - 35,
+      );
+      forest.y = clamp(forest.y + 52, forest.targetY + 25, forest.startY - 20);
+      e.x = clamp(e.x + (e.x - forest.x) * 0.5, 35, forest.worldW - 35);
+      showToast(`ПОГОНЯ ЗБИЛА ЗІ СТЕЖКИ · ♥ ${forest.hp}`);
+      if (forest.hp <= 0) {
+        showForestFail();
+        return;
+      }
+    }
+  }
+  forest.hazards.forEach((h) => {
+    if (!h.armed) return;
+    h.phase += dt * 4;
+    const d = Math.hypot(forest.x - h.x, forest.y - h.y);
+    if (h.type === "bog") {
+      if (d < 64) forest.mud = 0.7;
+    } else if (d < 100) {
+      h.warn = (h.warn || 0) + dt;
+      if (h.warn > 0.72) {
+        h.armed = false;
+        if (d < 58 && forest.invuln <= 0) {
+          forest.hp--;
+          forest.invuln = 1.05;
+          showToast(`МІНА · ♥ ${forest.hp}`);
+          if (forest.hp <= 0) showForestFail();
+        }
+      }
+    } else h.warn = 0;
+  });
+  if (gameEnded) return;
+  const goal = forestGoal(),
+    goalDist = Math.hypot(forest.x - goal.x, forest.y - goal.y);
+  if (forest.checkpointIndex < forest.waypoints.length && goalDist < 108) {
+    const q = forest.waypoints[forest.checkpointIndex];
+    q.done = true;
+    forest.checkpointIndex++;
+    forest.hp = Math.min(6, forest.hp + 1);
+    score += 250;
+    forest.score += 250;
+    document.getElementById("delivered").textContent =
+      `${forest.checkpointIndex} / 4`;
+    document.getElementById("objectiveTitle").textContent =
+      forest.checkpointIndex < 4
+        ? `МАРКЕР ${forest.checkpointIndex + 1} / 4 · КОМПАС`
+        : "УСІ МАРКЕРИ ЗІБРАНО · ДО ПАРКАНУ";
+    showToast(`МАЯК ${forest.checkpointIndex} / 4 · +1 СИЛА · +250 ОЧОК`);
+    for (let n = 0; n < 2; n++) spawnForestEnemy();
+  } else if (
+    forest.checkpointIndex === forest.waypoints.length &&
+    Math.hypot(forest.x - 1300, forest.y - 450) < 112 &&
+    forest.phase === "run"
+  ) {
+    forest.phase = "cut";
+    forest.cutProgress = 0;
+    forest.x = 1300;
+    forest.y = 450;
+    showToast("ЗНАЙДИ КУСАЧКИ · УТРИМУЙ E БІЛЯ ДРОТУ");
+  }
+  if (forest.phase === "cut") {
+    const close = Math.hypot(forest.x - 1300, forest.y - 450) < 120;
+    if (close && keyDown("KeyE"))
+      forest.cutProgress = Math.min(2.4, forest.cutProgress + dt);
+    else forest.cutProgress = Math.max(0, forest.cutProgress - dt * 0.55);
+    if (forest.cutProgress >= 2.4) {
+      forest.phase = "cutDone";
+      forest.ending = 0.01;
+      forest.enemies = [];
+      chime();
+      showToast("ДРІТ ПЕРЕРІЗАНО · ПРОСКАКУЙ У ПРОХІД");
+    }
+  }
+  forest.cameraX +=
+    (clamp(forest.x - W / 2, 0, forest.worldW - W) - forest.cameraX) *
+    Math.min(1, dt * 6);
+  forest.cameraY +=
+    (clamp(forest.y - H * 0.62, 0, forest.worldH - H) - forest.cameraY) *
+    Math.min(1, dt * 6);
+  forest.screenX = forest.x - forest.cameraX;
+  forest.screenY = forest.y - forest.cameraY;
+  document.getElementById("score").textContent = String(score).padStart(4, "0");
+  if (toastTimer > 0) {
+    toastTimer -= dt;
+    if (toastTimer <= 0)
+      document.getElementById("toast").classList.remove("show");
+  }
+}
+function drawForest(t) {
+  ctx.clearRect(0, 0, W, H);
+  const cameraX = forest.cameraX,
+    cameraY = forest.cameraY;
+  const bg = ctx.createLinearGradient(0, 0, 0, H);
+  bg.addColorStop(0, "#a5c871");
+  bg.addColorStop(0.45, "#7fa64c");
+  bg.addColorStop(1, "#587b40");
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+  for (
+    let y = Math.floor(cameraY / 128) * 128;
+    y < cameraY + H + 128;
+    y += 128
+  ) {
+    for (
+      let x = Math.floor(cameraX / 128) * 128;
+      x < cameraX + W + 128;
+      x += 128
+    ) {
+      const sx = x - cameraX,
+        sy = y - cameraY,
+        seed = Math.abs(((x / 128) | 0) * 31 + ((y / 128) | 0) * 17) % 8;
+      ctx.fillStyle = seed % 2 ? "#87ad50" : "#80a44b";
+      ctx.fillRect(sx, sy, 128, 128);
+      ctx.strokeStyle = "#759846";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(sx, sy + 64);
+      ctx.lineTo(sx + 128, sy + 64);
+      ctx.stroke();
+      for (let k = 0; k < 3; k++) {
+        const px = sx + ((seed * 17 + k * 39) % 120),
+          py = sy + ((seed * 31 + k * 47) % 120);
+        ctx.fillStyle = k % 2 ? "#bfd46a" : "#e2d982";
+        ctx.beginPath();
+        ctx.arc(px, py, 2 + (k % 2), 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
+  const pts = forestRoutePoints();
+  ctx.lineJoin = "round";
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  pts.forEach((q, i) => {
+    const x = q.x - cameraX,
+      y = q.y - cameraY;
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  });
+  ctx.strokeStyle = "#526640";
+  ctx.lineWidth = 102;
+  ctx.stroke();
+  ctx.strokeStyle = "#b79a5f";
+  ctx.lineWidth = 82;
+  ctx.stroke();
+  ctx.strokeStyle = "#d0b478";
+  ctx.lineWidth = 3;
+  ctx.setLineDash([18, 18]);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  for (const tree of forest.trees) {
+    const sx = tree.x - cameraX,
+      sy = tree.y - cameraY;
+    if (sx < -100 || sx > W + 100 || sy < -100 || sy > H + 100) continue;
+    const sway = Math.sin(t * 1.7 + tree.seed) * 3;
+    ctx.fillStyle = "#34482c";
+    ctx.beginPath();
+    ctx.ellipse(
+      sx + 6,
+      sy + 17,
+      tree.r * 1.05,
+      tree.r * 0.65,
+      0,
+      0,
+      Math.PI * 2,
+    );
+    ctx.fill();
+    ctx.fillStyle = tree.kind === "pine" ? "#2d603e" : "#3e743e";
+    for (let k = 0; k < 3; k++) {
+      const ax = sx + sway + Math.cos(k * 2.1) * tree.r * 0.42,
+        ay = sy + Math.sin(k * 2.1) * tree.r * 0.3;
+      ctx.beginPath();
+      ctx.arc(ax, ay, tree.r * 0.58, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.fillStyle = "#77a94e";
+    ctx.beginPath();
+    ctx.arc(sx - 7 + sway, sy - 8, tree.r * 0.28, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  for (const q of forest.tracks) {
+    const x = q.x - cameraX,
+      y = q.y - cameraY;
+    if (x < 0 || x > W || y < 0 || y > H) continue;
+    ctx.globalAlpha = (q.life / (q.type === "hero" ? 7 : 5)) * 0.6;
+    ctx.strokeStyle =
+      q.type === "hero"
+        ? "#f1df9b"
+        : q.type === "dog"
+          ? "#c48c54"
+          : q.type === "bear"
+            ? "#756152"
+            : "#df6d62";
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    ctx.ellipse(x, y, 10, 4, Math.sin(x + y), 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+  for (const h of forest.hazards) {
+    const x = h.x - cameraX,
+      y = h.y - cameraY;
+    if (x < -45 || x > W + 45 || y < -45 || y > H + 45) continue;
+    if (h.type === "bog") {
+      ctx.fillStyle = "#244f52";
+      ctx.beginPath();
+      ctx.ellipse(x, y, 40, 26, Math.sin(t) * 0.08, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = "#77b9a3";
+      ctx.lineWidth = 3;
+      ctx.stroke();
+      ctx.fillStyle = "#9bd7c3";
+      ctx.font = "bold 9px Arial";
+      ctx.textAlign = "center";
+      ctx.fillText("БОЛОТО · ПОВІЛЬНО", x, y + 4);
+    } else if (h.armed) {
+      ctx.fillStyle = h.warn > 0 ? "#ff7e46" : "#992f32";
+      ctx.beginPath();
+      ctx.arc(x, y, 11 + Math.sin(t * 8) * 2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = h.warn > 0 ? "#ffe16b" : "#e85d43";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(x, y, h.warn > 0 ? 50 : 20, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.fillStyle = "#fff1b7";
+      ctx.beginPath();
+      ctx.arc(x, y, 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  for (const shot of forest.shots)
+    drawVrSyrnyk(shot.x - cameraX, shot.y - cameraY, 13);
+  for (const e of forest.enemies) {
+    const x = e.x - cameraX,
+      y = e.y - cameraY;
+    if (x < -70 || x > W + 70 || y < -70 || y > H + 70) continue;
+    if (e.type === "bear" && e.windup > 0) {
+      ctx.strokeStyle = "#ff8a4c";
+      ctx.globalAlpha = 0.45 + 0.3 * Math.sin(t * 14);
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.arc(x, y, 44 + Math.sin(t * 8) * 5, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+    drawForestEnemy({ ...e, x, y }, t);
+  }
+  const fenceY = forest.targetY - cameraY;
+  if (fenceY > -120 && fenceY < H + 130) {
+    drawForestFence(fenceY, forest.phase === "cutDone" && forest.ending > 1);
+    drawForestFlags(245, fenceY - 154);
+    drawForestFlags(W - 330, fenceY - 154);
+  }
+  drawForestHero(
+    forest.x - cameraX,
+    forest.y - cameraY,
+    t,
+    forest.phase === "cut",
+  );
+  const target = forestGoal();
+  drawForestCompass(W - 85, H - 95, forest.x, forest.y, target.x, target.y);
+  drawForestMap();
+  ctx.fillStyle = "#0c2018eD";
+  rounded(ctx, 18, 15, 392, 103, 11);
+  ctx.fillStyle = "#fff1ce";
+  ctx.font = "900 15px Arial";
+  ctx.textAlign = "left";
+  ctx.fillText("ЛІС · МАРШРУТ УТЕЧІ", 31, 39);
+  ctx.fillStyle = "#f1d989";
+  ctx.font = "bold 11px Arial";
+  ctx.fillText(
+    `МАЯКИ ${forest.checkpointIndex}/4   ·   ♥ ${forest.hp}   ·   ОЧКИ ${String(forest.score).padStart(4, "0")}`,
+    31,
+    60,
+  );
+  ctx.fillStyle = "#26372c";
+  rounded(ctx, 31, 70, 364, 8, 4);
+  ctx.fillStyle = "#77e1b5";
+  rounded(ctx, 33, 72, (360 * forest.checkpointIndex) / 4, 4, 2);
+  ctx.fillStyle = "#e3ead6";
+  ctx.font = "bold 10px Arial";
+  ctx.fillText("WASD · РУХ    SPACE · СИРНИК    SHIFT · РИВОК", 31, 100);
+  if (forest.phase === "cut") {
+    ctx.fillStyle = "#0b1714ee";
+    rounded(ctx, W / 2 - 170, H - 92, 340, 55, 9);
+    ctx.fillStyle = "#fff1cf";
+    ctx.font = "bold 12px Arial";
+    ctx.textAlign = "center";
+    ctx.fillText("УТРИМУЙ E · ПЕРЕРІЗАТИ ДРІТ", W / 2, H - 70);
+    ctx.fillStyle = "#293a34";
+    rounded(ctx, W / 2 - 140, H - 57, 280, 9, 4);
+    ctx.fillStyle = "#ffd269";
+    rounded(ctx, W / 2 - 137, H - 54, (274 * forest.cutProgress) / 2.4, 4, 2);
+  } else if (forest.phase === "run") {
+    const goalDist = Math.hypot(forest.x - target.x, forest.y - target.y);
+    if (goalDist < 210) {
+      ctx.fillStyle = "#0b1714e8";
+      rounded(ctx, W / 2 - 100, H - 75, 200, 32, 8);
+      ctx.fillStyle = "#fff2cb";
+      ctx.font = "bold 11px Arial";
+      ctx.textAlign = "center";
+      ctx.fillText(
+        forest.checkpointIndex < 4 ? "ІДИ ДО МАРКЕРА" : "E · КУСАЧКИ",
+        W / 2,
+        H - 54,
+      );
+    }
+  }
+  if (forest.ending > 0 && forest.phase === "cutDone") {
+    ctx.fillStyle = "#f6edce";
+    ctx.font = "900 17px Arial";
+    ctx.textAlign = "center";
+    ctx.fillText("ДРІТ ПЕРЕРІЗАНО · ПРОСКАКУЙ У ПРОХІД", W / 2, 145);
+  }
+}
+function drawForestMap() {
+  const x = 1030,
+    y = 15,
+    w = 235,
+    h = 140;
+  ctx.fillStyle = "#0b1b19e8";
+  rounded(ctx, x, y, w, 140, 10);
+  ctx.fillStyle = "#fff0ca";
+  ctx.font = "bold 10px Arial";
+  ctx.textAlign = "center";
+  ctx.fillText("СТЕЖКА · НАСТУПНИЙ МАЯК", x + w / 2, y + 16);
+  const pts = forestRoutePoints(),
+    sx = (w - 30) / forest.worldW,
+    sy = 100 / (forest.startY - forest.targetY),
+    ox = x + 15,
+    oy = y + 23;
+  ctx.strokeStyle = "#a99566";
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  pts.forEach((q, i) => {
+    const px = ox + q.x * sx,
+      py = oy + (forest.startY - q.y) * sy;
+    if (i) ctx.lineTo(px, py);
+    else ctx.moveTo(px, py);
+  });
+  ctx.stroke();
+  for (const q of forest.waypoints) {
+    ctx.fillStyle = q.done ? "#65efba" : "#ffcc65";
+    ctx.beginPath();
+    ctx.arc(
+      ox + q.x * sx,
+      oy + (forest.startY - q.y) * sy,
+      3.5,
+      0,
+      Math.PI * 2,
+    );
+    ctx.fill();
+  }
+  ctx.fillStyle = "#fff";
+  ctx.beginPath();
+  ctx.arc(
+    ox + forest.x * sx,
+    oy + (forest.startY - forest.y) * sy,
+    4.5,
+    0,
+    Math.PI * 2,
+  );
+  ctx.fill();
+  ctx.fillStyle = "#e34e54";
+  ctx.beginPath();
+  ctx.arc(ox + 1300 * sx, oy + (forest.startY - 400) * sy, 4, 0, Math.PI * 2);
+  ctx.fill();
+}
+function drawForestHero(x, y, t, cutting) {
+  ctx.save();
+  ctx.translate(x, y + Math.sin(t * 13) * 1.5);
+  ctx.fillStyle = "#0005";
+  ctx.beginPath();
+  ctx.ellipse(3, 18, 25, 14, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#17282c";
+  rounded(ctx, -13, 4, 10, 23, 4);
+  rounded(ctx, 3, 4, 10, 23, 4);
+  ctx.fillStyle = "#d0b67c";
+  rounded(ctx, -16, 22, 13, 7, 3);
+  rounded(ctx, 3, 22, 13, 7, 3);
+  ctx.fillStyle = "#d4774e";
+  rounded(ctx, -17, -18, 34, 31, 8);
+  ctx.fillStyle = "#f0c393";
+  ctx.beginPath();
+  ctx.arc(0, -29, 14, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#4a3528";
+  ctx.beginPath();
+  ctx.arc(0, -34, 14, Math.PI, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#334d3e";
+  rounded(ctx, -21, 0, 42, 14, 6);
+  ctx.fillStyle = "#c34b44";
+  rounded(ctx, cutting ? 15 : 12, -18, cutting ? 15 : 10, 27, 4);
+  if (cutting) {
+    ctx.fillStyle = "#e6dbb2";
+    ctx.font = "bold 24px Arial";
+    ctx.textAlign = "center";
+    ctx.fillText("✂", 33, -23);
+  }
+  ctx.restore();
+}
+function drawForestEnemy(e, t) {
+  ctx.save();
+  ctx.translate(e.x, e.y + Math.sin(t * 6 + e.phase) * 2);
+  const col =
+    e.type === "dog" ? "#9a6738" : e.type === "bear" ? "#514033" : "#626f46";
+  ctx.fillStyle = "#0005";
+  ctx.beginPath();
+  ctx.ellipse(2, 16, e.type === "bear" ? 28 : 23, 13, 0, 0, Math.PI * 2);
+  ctx.fill();
+  if (e.type === "dog") {
+    ctx.fillStyle = col;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 23, 13, Math.sin(e.phase) * 0.05, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(15, -7, 10, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#f4d78c";
+    ctx.beginPath();
+    ctx.arc(18, -9, 2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "#3f3426";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(-12, 9);
+    ctx.lineTo(-15, 18);
+    ctx.moveTo(10, 9);
+    ctx.lineTo(13, 18);
+    ctx.stroke();
+  } else if (e.type === "bear") {
+    ctx.fillStyle = col;
+    ctx.beginPath();
+    ctx.ellipse(0, 2, 27, 20, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(0, -15, 16, 0, Math.PI * 2);
+    ctx.arc(-12, -26, 6, 0, Math.PI * 2);
+    ctx.arc(12, -26, 6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#e5c493";
+    ctx.beginPath();
+    ctx.ellipse(0, -11, 7, 5, 0, 0, Math.PI * 2);
+    ctx.fill();
+  } else {
+    ctx.fillStyle = "#14211d";
+    rounded(ctx, -11, 5, 8, 21, 3);
+    rounded(ctx, 4, 5, 8, 21, 3);
+    ctx.fillStyle = col;
+    rounded(ctx, -17, -19, 34, 29, 7);
+    ctx.fillStyle = "#d1ae86";
+    ctx.beginPath();
+    ctx.arc(0, -27, 13, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#4c593e";
+    rounded(ctx, -15, -39, 30, 11, 5);
+    ctx.fillStyle = "#f1d381";
+    ctx.fillRect(-4, -36, 8, 3);
+    ctx.fillStyle = "#ed705c";
+    ctx.fillRect(-17, -7, 34, 4);
+  }
+  ctx.restore();
+}
+function drawForestFence(y, cut) {
+  ctx.fillStyle = "#383f40";
+  ctx.fillRect(0, y, W, 14);
+  ctx.fillRect(0, y + 70, W, 10);
+  for (let x = 0; x < W; x += 38) {
+    ctx.fillStyle = "#45494a";
+    ctx.fillRect(x, y - 14, 6, 102);
+  }
+  ctx.strokeStyle = "#d3d7cb";
+  ctx.lineWidth = 2;
+  for (let k = 0; k < 4; k++) {
+    ctx.beginPath();
+    ctx.moveTo(0, y + 17 + k * 13);
+    ctx.lineTo(W, y + 17 + k * 13);
+    ctx.stroke();
+  }
+  if (cut) {
+    ctx.fillStyle = "#87b960";
+    ctx.fillRect(W / 2 - 48, y - 15, 96, 99);
+    ctx.strokeStyle = "#ffe28c";
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(W / 2 - 37, y + 20);
+    ctx.lineTo(W / 2 - 12, y + 43);
+    ctx.lineTo(W / 2 + 2, y + 16);
+    ctx.lineTo(W / 2 + 17, y + 44);
+    ctx.lineTo(W / 2 + 38, y + 22);
+    ctx.stroke();
+  }
+}
+function drawForestFlags(x, y = 275) {
+  ctx.fillStyle = "#a9b9a5";
+  ctx.fillRect(x, y, 4, 140);
+  ctx.fillStyle = "#d52c3b";
+  ctx.fillRect(x + 4, y + 5, 82, 28);
+  ctx.fillStyle = "#218c59";
+  ctx.fillRect(x + 4, y + 33, 82, 14);
+  ctx.fillStyle = "#fff";
+  ctx.fillRect(x + 4, y + 5, 12, 42);
+  ctx.fillStyle = "#c72b3b";
+  for (let yy = y + 7; yy < y + 49; yy += 8) {
+    ctx.fillRect(x + 6, yy, 3, 4);
+    ctx.fillRect(x + 11, yy + 3, 3, 3);
+  }
+  ctx.strokeStyle = "#fff";
+  ctx.lineWidth = 2;
+  ctx.strokeRect(x + 4, y + 5, 82, 42);
+}
+function drawForestCompass(x, y, px, py, targetX, targetY) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.fillStyle = "#11221be8";
+  ctx.beginPath();
+  ctx.arc(0, 0, 42, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = "#e9e6d288";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.fillStyle = "#f3f0dd";
+  ctx.font = "bold 10px Arial";
+  ctx.textAlign = "center";
+  ctx.fillText("N", 0, -28);
+  ctx.fillText("S", 0, 33);
+  ctx.fillText("W", -30, 4);
+  ctx.fillText("E", 30, 4);
+  const a = Math.atan2(targetX - px, py - targetY);
+  ctx.rotate(a);
+  ctx.fillStyle = "#ffca61";
+  ctx.beginPath();
+  ctx.moveTo(0, -25);
+  ctx.lineTo(-8, 8);
+  ctx.lineTo(0, 4);
+  ctx.lineTo(8, 8);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = "#67f2c3";
+  ctx.beginPath();
+  ctx.arc(0, 0, 4, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+function showForestVictory() {
+  running = false;
+  gameEnded = true;
+  const layer = document.getElementById("intro");
+  layer.classList.remove("hidden");
+  layer.innerHTML = `<section class="card"><div class="eyebrow">РІВЕНЬ 6 · ЛІС ЗАЛИШИВСЯ ПОЗАДУ</div><h1>Дріт перерізано.<br><em>Герой уже біжить.</em></h1><p>Після чотирьох маяків герой перерізав дріт і вибіг із лісу на сонячну дорогу.</p><div class="mission"><span>🌲 Ліс: пройдено</span><span>🥞 Сирники: тактичний запас</span><span>🚩 Прапор Білорусі: на місці</span></div><button id="forestReplayBtn">ПОВТОРИТИ РІВЕНЬ 6　↻</button><button id="forestToGermanyBtn" class="secondary">ПЕРЕЙТИ ДО РІВНЯ 7 · НІМЕЧЧИНА　→</button><button id="forestDoneBtn" class="secondary">ДО ГОЛОВНОГО МЕНЮ</button></section>`;
+  document.getElementById("forestReplayBtn").onclick = startForestLevel;
+  document.getElementById("forestToGermanyBtn").onclick = showGermanyTransition;
+  document.getElementById("forestDoneBtn").onclick = () => location.reload();
+}
+function showForestFail() {
+  running = false;
+  gameEnded = true;
+  const layer = document.getElementById("intro");
+  layer.classList.remove("hidden");
+  layer.innerHTML = `<section class="card"><div class="eyebrow">РІВЕНЬ 6 · ЛІС</div><h1>Лісова команда.<br><em>Занадто близько.</em></h1><p>Прикордонники, собаки й ведмеді перехопили героя. Віднови запас сил і спробуй ще раз.</p><button id="forestRetryBtn">ПОВТОРИТИ РІВЕНЬ 6　↻</button></section>`;
+  document.getElementById("forestRetryBtn").onclick = startForestLevel;
+}
+
+
+/* Source: js/03-germany.js */
+function germanyGoal() {
+  return !germany.banked
+    ? germany.machine
+    : germany.shopping
+      ? { x: 1460, y: 835 }
+      : germany.meet;
+}
+function showGermanyTransition() {
+  saveCampaignChapter(8);
+  const layer = document.getElementById("intro");
+  layer.classList.remove("hidden");
+  layer.innerHTML = `<section class="card"><div class="eyebrow">РІВЕНЬ 7 · НІЧНЕ МІСТО · НІМЕЧЧИНА</div><h1>Новий кордон.<br><em>Челендж є. Цінників нема.</em></h1><p>Герой влаштовує TikTok-челендж: назбирати 12 пляшок і здати їх у Lidl Pfand. Насправді він дуже багатий і цінників не дивиться — це чисто контент. Колишня з Росії тим часом лишила дев’ять голосових; «кста, не зараз».</p><div class="mission"><span>🍾 12 пляшок × €0,25 = €3,00</span><span>♻️ Рюкзак: максимум 2 · Lidl Pfand</span><span>🛒 Обери 3 товари без цінників</span><span>💛 Знайди Жінку Непальця</span></div><button id="startGermanyBtn">ШУКАТИ PFAND　→</button><button id="germanyMenuBtn" class="secondary">ДО ГОЛОВНОГО МЕНЮ</button></section>`;
+  document.getElementById("startGermanyBtn").onclick = startGermanyLevel;
+  document.getElementById("germanyMenuBtn").onclick = () => location.reload();
+}
+function startGermanyLevel() {
+  saveCampaignChapter(8);
+  focusGame();
+  stage = 8;
+  gameEnded = false;
+  running = true;
+  paused = false;
+  germany = {
+    worldW: 2500,
+    worldH: 1900,
+    x: 150,
+    y: 1700,
+    vx: 0,
+    vy: 0,
+    cameraX: 0,
+    cameraY: 1100,
+    carried: 0,
+    deposited: 0,
+    goal: 12,
+    banked: false,
+    shopping: false,
+    shopCount: 0,
+    shopProducts: [],
+    meet: { x: 2310, y: 1690 },
+    machine: { x: 1280, y: 920 },
+    items: [],
+    npcs: [],
+    rivals: [],
+    cars: [],
+    scooters: [],
+    bins: [],
+    speechCooldown: 0,
+    fullHint: 0,
+  };
+  for (let i = 0; i < 12; i++) {
+    const x = 180 + Math.random() * 2140,
+      y = 160 + Math.random() * 1600;
+    germany.npcs.push({
+      x,
+      y,
+      dx: Math.random() - 0.5,
+      dy: Math.random() - 0.5,
+      dropTimer: 1 + Math.random() * 5,
+      barkTimer: 1 + Math.random() * 3,
+      bark: "",
+      barkLife: 0,
+    });
+  }
+  for (const y of [250, 800, 1350, 1700])
+    for (let i = 0; i < 3; i++)
+      germany.cars.push({
+        axis: "h",
+        x: Math.random() * germany.worldW,
+        y: y + (i % 2 ? 34 : -34),
+        speed: 90 + Math.random() * 110,
+        dir: Math.random() < 0.5 ? 1 : -1,
+        color: ["#d4dbe0", "#cf5349", "#62a1a3", "#e3c76d"][
+          Math.floor(Math.random() * 4)
+        ],
+      });
+  for (const x of [200, 700, 1200, 1700, 2200])
+    for (let i = 0; i < 2; i++)
+      germany.cars.push({
+        axis: "v",
+        x: x + (i % 2 ? 34 : -34),
+        y: Math.random() * germany.worldH,
+        speed: 85 + Math.random() * 105,
+        dir: Math.random() < 0.5 ? 1 : -1,
+        color: ["#c4d1d1", "#bb6552", "#657eab", "#d6a84d"][
+          Math.floor(Math.random() * 4)
+        ],
+      });
+  for (let i = 0; i < 12; i++)
+    germany.scooters.push({
+      x: Math.random() * germany.worldW,
+      y: [250, 800, 1350, 1700][i % 4] + (i % 2 ? 56 : -56),
+      speed: 60 + Math.random() * 70,
+      dir: i % 2 ? 1 : -1,
+      color: ["#5ae3d0", "#f0be5d", "#df7655"][i % 3],
+    });
+  for (let i = 0; i < 20; i++)
+    germany.bins.push({
+      x: 80 + Math.random() * 2340,
+      y: 100 + Math.random() * 1700,
+    });
+  germany.items = [
+    { x: 390, y: 1650, life: 30 },
+    { x: 550, y: 1600, life: 30 },
+    { x: 810, y: 1450, life: 27 },
+    { x: 1350, y: 1150, life: 30 },
+    { x: 1780, y: 1500, life: 28 },
+    { x: 2290, y: 1200, life: 30 },
+  ];
+  germany.shopProducts = [
+    { x: 1430, y: 760, name: "КОЛОНКА", color: "#6fd9c8", got: false },
+    { x: 1500, y: 805, name: "ПЛЮШ", color: "#f296bd", got: false },
+    { x: 1420, y: 850, name: "КОНСОЛЬ", color: "#95a8ed", got: false },
+    { x: 1515, y: 900, name: "ФУТБОЛКА", color: "#f0c46a", got: false },
+    { x: 1390, y: 915, name: "ТІКТОК-ШТАТИВ", color: "#9add77", got: false },
+  ];
+  germany.rivals = Array.from({ length: 3 }, (_, i) => ({
+    x: 220 + Math.random() * 2050,
+    y: 240 + Math.random() * 1550,
+    speed: 76 + Math.random() * 32,
+    target: null,
+    kind: i % 3,
+  }));
+  keys.clear();
+  gamepadKeys.clear();
+  boostPressed = false;
+  interactPressed = false;
+  document
+    .getElementById("game")
+    .classList.remove(
+      "arcade-mode",
+      "cafe-mode",
+      "training-mode",
+      "forest-mode",
+    );
+  document.getElementById("game").classList.add("germany-mode");
+  document.querySelector(".mapbox").style.display = "block";
+  document.querySelector(".maplabel").textContent = "ЖОВТИЙ · PFAND / МЕТА";
+  document.querySelector(".speed").style.display = "none";
+  setHint(
+    "РУХ <b>WASD / СТРІЛКИ</b>　 <b>E</b> ВІДВОЛІКТИ СУПЕРНИКА　 РУКИ: <b>2 ПЛЯШКИ</b>",
+  );
+  document.getElementById("delivered").parentElement.firstChild.textContent =
+    "🍾 PFAND ";
+  document.getElementById("delivered").textContent = "0 / 12";
+  document.getElementById("timer").textContent = "€0.00";
+  document.getElementById("objectiveTitle").textContent = "ЗБЕРИ 12 ПЛЯШОК";
+  document.getElementById("objectiveText").textContent =
+    "Місто велике й живе: стеж за машинами, перехожими та самокатчиками. Здавай пляшки в Lidl Pfand.";
+  document.getElementById("intro").classList.add("hidden");
+  document.getElementById("pause").classList.remove("show");
+  audioStart();
+  showToast("12 ПЛЯШОК = €3 · НОСИ НЕ БІЛЬШЕ ДВОХ");
+  last = performance.now();
+  scheduleLoop();
+}
+function germanBark(n) {
+  const lines = [
+    "Scheiß Ausländer!",
+    "Geh arbeiten!",
+    "Geh zurück in dein Land!",
+    "Verpiss dich!",
+    "Fluggegecheimen!",
+    "Fahr doch zurück in die Ukraine!",
+    "Deutschland den Deutschen!",
+    "Ausländer raus!",
+  ];
+  n.bark = lines[Math.floor(Math.random() * lines.length)];
+  n.barkLife = 2.7;
+  germany.speechCooldown = 4.6;
+  if ("speechSynthesis" in window && "SpeechSynthesisUtterance" in window) {
+    try {
+      window.speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(n.bark);
+      u.lang = "de-DE";
+      u.rate = 0.9;
+      u.pitch = 0.82;
+      window.speechSynthesis.speak(u);
+    } catch (e) {}
+  }
+}
+function updateGermany(dt, t) {
+  const { x: dx, y: dy } = movementAxes();
+  germany.vx += (dx * 365 - germany.vx) * Math.min(1, dt * 10);
+  germany.vy += (dy * 365 - germany.vy) * Math.min(1, dt * 10);
+  germany.x = clamp(germany.x + germany.vx * dt, 36, germany.worldW - 36);
+  germany.y = clamp(germany.y + germany.vy * dt, 120, germany.worldH - 40);
+  germany.cameraX = clamp(germany.x - W / 2, 0, germany.worldW - W);
+  germany.cameraY = clamp(germany.y - H / 2, 0, germany.worldH - H);
+  if (interactPressed) {
+    interactPressed = false;
+    const rival = germany.rivals.reduce(
+      (best, r) =>
+        Math.hypot(r.x - germany.x, r.y - germany.y) <
+        (best ? Math.hypot(best.x - germany.x, best.y - germany.y) : 92)
+          ? r
+          : best,
+      null,
+    );
+    if (rival && Math.hypot(rival.x - germany.x, rival.y - germany.y) < 92) {
+      rival.stun = 1.65;
+      showToast("ГЕЙ, ВІДВОЛІК РИВАЛА · ПІДБИРАЙ ПЛЯШКУ");
+      tone(240, 0.08, "triangle", 0.03, -90);
+    } else showToast("ПІДІЙДИ ДО СУПЕРНИКА, ЩОБ ВІДВОЛІКТИ ЙОГО");
+  }
+  germany.speechCooldown = Math.max(0, germany.speechCooldown - dt);
+  germany.fullHint = Math.max(0, germany.fullHint - dt);
+  for (const n of germany.npcs) {
+    n.x = clamp(n.x + n.dx * 58 * dt, 45, germany.worldW - 45);
+    n.y = clamp(n.y + n.dy * 52 * dt, 120, germany.worldH - 45);
+    if (n.x < 60 || n.x > germany.worldW - 60) n.dx *= -1;
+    if (n.y < 130 || n.y > germany.worldH - 60) n.dy *= -1;
+    if (Math.random() < dt * 0.2) {
+      n.dx += (Math.random() - 0.5) * 0.9;
+      n.dy += (Math.random() - 0.5) * 0.9;
+      const d = Math.hypot(n.dx, n.dy) || 1;
+      n.dx /= d;
+      n.dy /= d;
+    }
+    n.dropTimer -= dt;
+    n.barkLife = Math.max(0, n.barkLife - dt);
+    n.barkTimer = Math.max(0, n.barkTimer - dt);
+    if (n.dropTimer <= 0 && germany.items.length < 8) {
+      const a = Math.random() * Math.PI * 2;
+      germany.items.push({
+        x: clamp(n.x + Math.cos(a) * 35, 45, germany.worldW - 45),
+        y: clamp(n.y + Math.sin(a) * 35, 130, germany.worldH - 45),
+        life: 24 + Math.random() * 8,
+      });
+      n.dropTimer = 8 + Math.random() * 5;
+    }
+    if (
+      Math.hypot(germany.x - n.x, germany.y - n.y) < 145 &&
+      n.barkTimer <= 0 &&
+      germany.speechCooldown <= 0
+    ) {
+      germanBark(n);
+      n.barkTimer = 5 + Math.random() * 2;
+    }
+  }
+  for (const c of germany.cars) {
+    if (c.axis === "h") {
+      c.x += c.speed * c.dir * dt;
+      if (c.dir > 0 && c.x > germany.worldW + 100) c.x = -100;
+      if (c.dir < 0 && c.x < -100) c.x = germany.worldW + 100;
+    } else {
+      c.y += c.speed * c.dir * dt;
+      if (c.dir > 0 && c.y > germany.worldH + 100) c.y = -100;
+      if (c.dir < 0 && c.y < -100) c.y = germany.worldH + 100;
+    }
+    if (Math.abs(germany.x - c.x) < 34 && Math.abs(germany.y - c.y) < 27) {
+      const d = Math.hypot(germany.x - c.x, germany.y - c.y) || 1;
+      germany.x = clamp(
+        germany.x + ((germany.x - c.x) / d) * 60,
+        36,
+        germany.worldW - 36,
+      );
+      germany.y = clamp(
+        germany.y + ((germany.y - c.y) / d) * 60,
+        120,
+        germany.worldH - 40,
+      );
+      showToast("УВАГА, МАШИНА!");
+    }
+  }
+  for (const c of germany.scooters) {
+    c.x += c.speed * c.dir * dt;
+    if (c.x > germany.worldW + 70) c.x = -70;
+    if (c.x < -70) c.x = germany.worldW + 70;
+    if (Math.hypot(germany.x - c.x, germany.y - c.y) < 28) {
+      germany.x = clamp(germany.x - c.dir * 32, 36, germany.worldW - 36);
+      showToast("САМОКАТЧИК ПРОМЧАВ ПОВЗ!");
+    }
+  }
+  for (let i = germany.items.length - 1; i >= 0; i--) {
+    const b = germany.items[i];
+    b.life -= dt;
+    if (b.life <= 0) {
+      germany.items.splice(i, 1);
+      continue;
+    }
+    if (
+      germany.carried < 2 &&
+      Math.hypot(germany.x - b.x, germany.y - b.y) < 32
+    ) {
+      germany.items.splice(i, 1);
+      germany.carried++;
+      tone(680, 0.07, "sine", 0.035, 120);
+      showToast("ПЛЯШКА В РЮКЗАКУ · €0,25");
+    }
+  }
+  for (const r of germany.rivals) {
+    let target = null,
+      dist = 1e9;
+    for (const b of germany.items) {
+      const d = Math.hypot(r.x - b.x, r.y - b.y);
+      if (d < dist) {
+        dist = d;
+        target = b;
+      }
+    }
+    r.target = target;
+    if (r.stun > 0) {
+      r.stun = Math.max(0, r.stun - dt);
+      r.lastStole = r.stun;
+    } else if (target) {
+      const dx = target.x - r.x,
+        dy = target.y - r.y,
+        d = Math.hypot(dx, dy) || 1;
+      r.x += (dx / d) * r.speed * dt;
+      r.y += (dy / d) * r.speed * dt;
+      if (d < 22) {
+        const i = germany.items.indexOf(target);
+        if (i >= 0) {
+          germany.items.splice(i, 1);
+          r.lastStole = 1.4;
+        }
+      }
+    } else {
+      r.lastStole = Math.max(0, (r.lastStole || 0) - dt);
+      r.x = clamp(r.x + Math.sin(t + r.x) * 15 * dt, 35, germany.worldW - 35);
+    }
+  }
+  if (
+    germany.carried > 0 &&
+    Math.hypot(germany.x - germany.machine.x, germany.y - germany.machine.y) <
+      76
+  ) {
+    const amount = germany.carried,
+      deposit = Math.min(amount, germany.goal - germany.deposited);
+    germany.deposited += deposit;
+    germany.carried = 0;
+    score += deposit * 25;
+    document.getElementById("score").textContent = String(score).padStart(
+      4,
+      "0",
+    );
+    document.getElementById("delivered").textContent =
+      `${germany.deposited} / ${germany.goal}`;
+    document.getElementById("timer").textContent =
+      `€${(germany.deposited * 0.25).toFixed(2)}`;
+    tone(740, 0.12, "sine", 0.05, 200);
+    showToast(`LIDL PFAND: +€${(deposit * 0.25).toFixed(2)}`);
+    if (germany.deposited >= germany.goal) {
+      germany.banked = true;
+      germany.shopping = true;
+      document.getElementById("objectiveTitle").textContent =
+        "LIDL · ОБЕРИ 3 РЕЧІ";
+      document.getElementById("objectiveText").textContent =
+        "У героя немає бюджету — просто обери будь-які три товари. Цінників тут немає.";
+      document.querySelector(".maplabel").textContent =
+        "ФІОЛЕТОВИЙ · LIDL / ВИБЕРИ 3 ТОВАРИ";
+      showToast("PFAND-ЧЕЛЕНДЖ ВИКОНАНО · ЧАС ЗАКУПІВ");
+    } else {
+      document.getElementById("objectiveTitle").textContent =
+        `ЗБЕРИ ЩЕ ${germany.goal - germany.deposited} ПЛЯШОК`;
+      document.getElementById("objectiveText").textContent =
+        "Збирай не більше двох за раз і повертайся до Lidl Pfand.";
+    }
+  }
+  if (germany.shopping) {
+    for (const item of germany.shopProducts) {
+      if (
+        !item.got &&
+        Math.hypot(germany.x - item.x, germany.y - item.y) < 42
+      ) {
+        item.got = true;
+        germany.shopCount++;
+        score += 500;
+        showToast(
+          `ВІЗЬМЕМО · ${item.name} · РАХУЄМО НЕ ЦІННИКИ (${germany.shopCount}/3)`,
+        );
+        if (germany.shopCount >= 3) {
+          germany.shopping = false;
+          document.getElementById("objectiveTitle").textContent =
+            "ЗУСТРІЧ ІЗ ЖІНКОЮ НЕПАЛЬЦЯ";
+          document.getElementById("objectiveText").textContent =
+            "Вирушай до східного скверу. TikTok уже записав, покупки зроблені.";
+          document.querySelector(".maplabel").textContent =
+            "РОЖЕВИЙ · МІСЦЕ ЗУСТРІЧІ";
+          chime();
+        }
+      }
+    }
+  }
+  if (
+    germany.banked &&
+    !germany.shopping &&
+    Math.hypot(germany.x - germany.meet.x, germany.y - germany.meet.y) < 55
+  ) {
+    showGermanyVictory();
+    return;
+  }
+  document.getElementById("delivered").textContent =
+    `${germany.deposited} / 12 · ${germany.carried}/2`;
+  if (toastTimer > 0) {
+    toastTimer -= dt;
+    if (toastTimer <= 0)
+      document.getElementById("toast").classList.remove("show");
+  }
+}
+function drawGermany(t) {
+  ctx.clearRect(0, 0, W, H);
+  const cX = germany.cameraX,
+    cY = germany.cameraY;
+  ctx.save();
+  ctx.translate(-cX, -cY);
+  const bg = ctx.createLinearGradient(0, cY, 0, cY + H);
+  bg.addColorStop(0, "#a8c8d1");
+  bg.addColorStop(0.55, "#c4d6c8");
+  bg.addColorStop(1, "#d5d4be");
+  ctx.fillStyle = bg;
+  ctx.fillRect(cX, cY, W, H);
+  const roadsXg = [200, 700, 1200, 1700, 2200],
+    roadsYg = [250, 800, 1350, 1700];
+  for (const y of roadsYg) {
+    ctx.fillStyle = "#8b928e";
+    ctx.fillRect(0, y - 56, germany.worldW, 112);
+    ctx.fillStyle = "#626b69";
+    ctx.fillRect(0, y - 42, germany.worldW, 84);
+    ctx.strokeStyle = "#c5b887";
+    ctx.lineWidth = 3;
+    ctx.setLineDash([26, 22]);
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(germany.worldW, y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+  for (const x of roadsXg) {
+    ctx.fillStyle = "#8b928e";
+    ctx.fillRect(x - 56, 0, 112, germany.worldH);
+    ctx.fillStyle = "#626b69";
+    ctx.fillRect(x - 42, 0, 84, germany.worldH);
+    ctx.strokeStyle = "#c5b887";
+    ctx.lineWidth = 3;
+    ctx.setLineDash([26, 22]);
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, germany.worldH);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+  for (let row = 0; row < 4; row++)
+    for (let col = 0; col < 5; col++) {
+      const bx = 50 + col * 500 + (row % 2) * 30,
+        by = 45 + row * 480;
+      if (bx > germany.worldW - 320) continue;
+      ctx.fillStyle = "#89958f";
+      rounded(ctx, bx, by, 330, 175, 12);
+      ctx.fillStyle = ["#c6b99f", "#b8c1b5", "#d0c4ad", "#b6c4c2"][
+        (row + col) % 4
+      ];
+      rounded(ctx, bx + 9, by + 10, 312, 156, 9);
+      for (let wx = bx + 24; wx < bx + 305; wx += 42)
+        for (let wy = by + 27; wy < by + 145; wy += 35) {
+          ctx.fillStyle = (Math.floor(wx + wy) / 7) % 2 ? "#9fd6ed" : "#ffe3a0";
+          ctx.fillRect(wx, wy, 18, 18);
+        }
+      ctx.fillStyle = "#262e3a";
+      ctx.fillRect(bx + 18, by + 142, 294, 12);
+    }
+  for (const y of roadsYg)
+    for (let x = 0; x < germany.worldW; x += 190) {
+      ctx.fillStyle = "#eee5cf";
+      ctx.fillRect(x, y - 55, 26, 8);
+      ctx.fillRect(x, y + 47, 26, 8);
+    }
+  for (const b of germany.bins) drawGermanyBin(b.x, b.y);
+  drawGermanyFlags(t);
+  for (const c of germany.cars) drawGermanyCar(c);
+  for (const c of germany.scooters) drawGermanyScooter(c, t);
+  for (const b of germany.items) drawGermanyBottle(b.x, b.y, t);
+  for (const n of germany.npcs) drawGermanyNpc(n.x, n.y, t, n.bark, n.barkLife);
+  for (const r of germany.rivals) drawGermanyRival(r, t);
+  drawPfandMachine(germany.machine.x, germany.machine.y);
+  ctx.save();
+  ctx.fillStyle = "#ffe15b";
+  ctx.font = "900 16px Arial";
+  ctx.textAlign = "center";
+  ctx.shadowColor = "#ffcf45";
+  ctx.shadowBlur = 9;
+  ctx.fillText(
+    "LIDL PFAND ↓",
+    germany.machine.x,
+    germany.machine.y - 88 + Math.sin(t * 3) * 3,
+  );
+  ctx.restore();
+  if (germany.banked && !germany.shopping)
+    drawGermanyWoman(germany.meet.x, germany.meet.y, t);
+  if (germany.banked) {
+    drawGermanyStore(1430, 835, t);
+    for (const item of germany.shopProducts)
+      if (!item.got)
+        drawGermanyProduct(item.x, item.y, item.color, item.name, t);
+  }
+  drawGermanyHero(germany.x, germany.y, t);
+  ctx.restore();
+  ctx.fillStyle = "#f5e8cc";
+  ctx.font = "bold 16px Arial,sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillStyle = "#101923dd";
+  rounded(ctx, W / 2 - 155, H - 78, 310, 39, 10);
+  ctx.fillStyle = "#ffd479";
+  ctx.font = "bold 14px Arial";
+  ctx.textAlign = "center";
+  ctx.fillText(
+    `${germany.banked ? (germany.shopping ? `LIDL · ${germany.shopCount}/3 БЕЗ ЦІННИКІВ` : "ФІНАЛЬНИЙ МАРШРУТ") : "€" + (germany.deposited * 0.25).toFixed(2) + " / €3.00"} · РАЙОН ${Math.floor(germany.x / 500) + 1}`,
+    W / 2,
+    H - 53,
+  );
+  if (germany.carried === 2) {
+    ctx.fillStyle = "#fff1b2";
+    ctx.font = "bold 12px Arial";
+    ctx.fillText("РЮКЗАК ПОВНИЙ · ДО LIDL PFAND", W / 2, H - 91);
+  }
+}
+function drawGermanyStore(x, y, t) {
+  ctx.save();
+  ctx.fillStyle = "#0008";
+  ctx.beginPath();
+  ctx.ellipse(x, y + 44, 103, 20, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#344452";
+  rounded(ctx, x - 93, y - 70, 186, 112, 10);
+  ctx.fillStyle = "#dc252c";
+  rounded(ctx, x - 88, y - 65, 176, 31, 7);
+  ctx.fillStyle = "#fff";
+  ctx.font = "900 20px Arial";
+  ctx.textAlign = "center";
+  ctx.fillText("LIDL", x, y - 43);
+  ctx.fillStyle = "#f2d668";
+  ctx.beginPath();
+  ctx.arc(x, y - 52, 12 + Math.sin(t * 5) * 1.2, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#a4cdd2";
+  rounded(ctx, x - 74, y - 25, 148, 57, 5);
+  ctx.fillStyle = "#26323b";
+  ctx.fillRect(x - 8, y - 24, 41, 56);
+  ctx.fillStyle = "#e9dcb9";
+  ctx.font = "bold 10px Arial";
+  ctx.fillText("KEINE PREISSCHILDER", x, y + 26);
+  ctx.restore();
+}
+function drawGermanyProduct(x, y, color, name, t) {
+  ctx.save();
+  ctx.translate(x, y + Math.sin(t * 4 + x) * 3);
+  ctx.shadowColor = color;
+  ctx.shadowBlur = 12;
+  ctx.fillStyle = color;
+  rounded(ctx, -15, -16, 30, 31, 6);
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = "#1b2530";
+  ctx.font = "bold 8px Arial";
+  ctx.textAlign = "center";
+  ctx.fillText(name, 0, 23);
+  ctx.restore();
+}
+function drawGermanyBin(x, y) {
+  ctx.fillStyle = "#0b131b";
+  rounded(ctx, x - 20, y - 18, 40, 37, 6);
+  ctx.fillStyle = "#377c6d";
+  rounded(ctx, x - 16, y - 13, 32, 29, 4);
+  ctx.fillStyle = "#a8c7b7";
+  ctx.fillRect(x - 23, y - 20, 46, 5);
+  ctx.fillStyle = "#e7ca7c";
+  ctx.fillRect(x - 8, y - 5, 16, 9);
+  ctx.fillStyle = "#17232b";
+  ctx.font = "bold 7px Arial";
+  ctx.textAlign = "center";
+  ctx.fillText("PFAND", x, y + 1);
+}
+function drawGermanyWoman(x, y, t) {
+  ctx.save();
+  ctx.translate(x, y + Math.sin(t * 3) * 2);
+  ctx.scale(0.94, 0.94);
+  ctx.strokeStyle = "rgba(255,207,104,.75)";
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.arc(0, 0, 34 + Math.sin(t * 4) * 3, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.fillStyle = "#0009";
+  ctx.beginPath();
+  ctx.ellipse(1, 19, 23, 10, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#202733";
+  rounded(ctx, -14, 3, 11, 23, 4);
+  rounded(ctx, 4, 3, 11, 23, 4);
+  ctx.fillStyle = "#9b5f92";
+  rounded(ctx, -19, -29, 38, 34, 9);
+  ctx.fillStyle = "#d6a67e";
+  ctx.beginPath();
+  ctx.arc(0, -39, 14, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#251e24";
+  ctx.beginPath();
+  ctx.arc(-1, -45, 15, Math.PI, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.ellipse(13, -35, 7, 12, 0.2, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#ffe9aa";
+  ctx.font = "bold 13px Arial";
+  ctx.textAlign = "center";
+  ctx.fillText("ЖІНКА НЕПАЛЬЦЯ", 0, -67);
+  ctx.fillStyle = "#ff7298";
+  ctx.font = "24px Arial";
+  ctx.fillText("♥", 26, -48);
+  ctx.restore();
+}
+function drawGermanyBottle(x, y, t = 0) {
+  ctx.save();
+  ctx.shadowColor = "#ffe28a";
+  ctx.shadowBlur = 12;
+  ctx.fillStyle = "#0007";
+  ctx.beginPath();
+  ctx.ellipse(x + 2, y + 9, 12, 5, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#79d6a0";
+  rounded(ctx, x - 7, y - 15, 14, 26, 4);
+  ctx.fillStyle = "#c8edce";
+  ctx.fillRect(x - 4, y - 21, 8, 8);
+  ctx.fillStyle = "#f1d66d";
+  ctx.fillRect(x - 3, y - 10, 6, 10);
+  ctx.restore();
+}
+function drawPfandMachine(x, y) {
+  ctx.save();
+  ctx.fillStyle = "rgba(8,16,20,.7)";
+  ctx.beginPath();
+  ctx.ellipse(x, y + 55, 62, 17, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#151d23";
+  rounded(ctx, x - 49, y - 72, 98, 140, 12);
+  ctx.fillStyle = "#e1262e";
+  rounded(ctx, x - 42, y - 64, 84, 122, 8);
+  ctx.fillStyle = "#ffdc36";
+  ctx.beginPath();
+  ctx.arc(x, y - 43, 17, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#d52b32";
+  ctx.beginPath();
+  ctx.arc(x, y - 43, 10, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#fff";
+  ctx.font = "900 14px Arial";
+  ctx.textAlign = "center";
+  ctx.fillText("LIDL", x, y - 12);
+  ctx.fillStyle = "#133e35";
+  rounded(ctx, x - 34, y + 1, 68, 39, 5);
+  ctx.fillStyle = "#9effca";
+  ctx.font = "900 10px Arial";
+  ctx.fillText("PFAND", x, y + 17);
+  ctx.fillText("AUTOMAT", x, y + 29);
+  ctx.fillStyle = "#ffe46b";
+  ctx.fillRect(x - 17, y + 48, 34, 6);
+  ctx.restore();
+}
+function drawGermanyNpc(x, y, t, bark = "", barkLife = 0) {
+  ctx.save();
+  ctx.translate(x, y + Math.sin(t * 3 + x) * 2);
+  ctx.scale(0.94, 0.94);
+  ctx.fillStyle = "#0008";
+  ctx.beginPath();
+  ctx.ellipse(0, 18, 20, 10, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#192331";
+  rounded(ctx, -14, -1, 12, 20, 4);
+  rounded(ctx, 2, -1, 12, 20, 4);
+  ctx.fillStyle = ["#647a68", "#c78e52", "#647895", "#a46d71"][
+    Math.floor(x / 280) % 4
+  ];
+  rounded(ctx, -18, -32, 36, 34, 9);
+  ctx.fillStyle = "#d6b08a";
+  ctx.beginPath();
+  ctx.arc(0, -42, 14, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#403830";
+  ctx.beginPath();
+  ctx.arc(0, -47, 14, Math.PI, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+  if (bark && barkLife > 0) drawGermanSpeechBubble(x, y - 61, bark);
+}
+function drawGermanSpeechBubble(x, y, text) {
+  ctx.save();
+  ctx.font = "bold 13px Arial,sans-serif";
+  const max = 300,
+    words = text.split(" "),
+    lines = [];
+  let line = "";
+  for (const w of words) {
+    const next = line ? line + " " + w : w;
+    if (ctx.measureText(next).width > max && line) {
+      lines.push(line);
+      line = w;
+    } else line = next;
+  }
+  if (line) lines.push(line);
+  const width = Math.min(
+      max,
+      Math.max(100, ...lines.map((l) => ctx.measureText(l).width)) + 22,
+    ),
+    height = lines.length * 17 + 16,
+    left = clamp(x - width / 2, 8, W - width - 8),
+    top = clamp(y - height, 105, H - height - 8);
+  ctx.fillStyle = "#fff8e8";
+  ctx.strokeStyle = "#252a32";
+  ctx.lineWidth = 2;
+  rounded(ctx, left, top, width, height, 9);
+  ctx.stroke();
+  ctx.fillStyle = "#fff8e8";
+  ctx.beginPath();
+  ctx.moveTo(clamp(x, left + 12, left + width - 12), top + height - 1);
+  ctx.lineTo(x, top + height + 9);
+  ctx.lineTo(clamp(x + 17, left + 12, left + width - 12), top + height - 1);
+  ctx.fill();
+  ctx.fillStyle = "#222630";
+  ctx.textAlign = "center";
+  ctx.font = "bold 13px Arial,sans-serif";
+  lines.forEach((l, i) => ctx.fillText(l, left + width / 2, top + 20 + i * 17));
+  ctx.restore();
+}
+function drawGermanyCar(c) {
+  ctx.save();
+  ctx.translate(c.x, c.y);
+  if (c.axis === "v") ctx.rotate(Math.PI / 2);
+  ctx.fillStyle = "#0008";
+  ctx.beginPath();
+  ctx.ellipse(3, 5, 31, 16, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = c.color;
+  rounded(ctx, -31, -15, 62, 30, 9);
+  ctx.fillStyle = "#b7d9df";
+  rounded(ctx, -11, -11, 22, 22, 5);
+  ctx.fillStyle = "#f8edc2";
+  ctx.fillRect(-29, -10, 5, 7);
+  ctx.fillRect(24, -10, 5, 7);
+  ctx.fillStyle = "#242c36";
+  ctx.fillRect(-20, -18, 12, 4);
+  ctx.fillRect(10, -18, 12, 4);
+  ctx.fillRect(-20, 14, 12, 4);
+  ctx.fillRect(10, 14, 12, 4);
+  ctx.restore();
+}
+function drawGermanyScooter(c, t) {
+  ctx.save();
+  ctx.translate(c.x, c.y + Math.sin(t * 8 + c.x) * 2);
+  if (c.dir < 0) ctx.scale(-1, 1);
+  ctx.strokeStyle = "#111820";
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.arc(-11, 5, 5, 0, Math.PI * 2);
+  ctx.arc(13, 5, 5, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.strokeStyle = c.color;
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.moveTo(-10, 2);
+  ctx.lineTo(11, 2);
+  ctx.lineTo(7, -16);
+  ctx.lineTo(15, -17);
+  ctx.stroke();
+  ctx.fillStyle = "#25313a";
+  rounded(ctx, -6, -36, 14, 23, 5);
+  ctx.fillStyle = c.color;
+  rounded(ctx, -10, -33, 20, 17, 5);
+  ctx.fillStyle = "#d9ae7d";
+  ctx.beginPath();
+  ctx.arc(1, -45, 8, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#3a3029";
+  ctx.beginPath();
+  ctx.arc(0, -48, 8, Math.PI, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = "#303941";
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.moveTo(-4, -13);
+  ctx.lineTo(-8, -3);
+  ctx.moveTo(6, -13);
+  ctx.lineTo(10, -2);
+  ctx.stroke();
+  ctx.restore();
+}
+function drawGermanyRival(r, t) {
+  ctx.save();
+  ctx.translate(r.x, r.y + Math.sin(t * 6 + r.x) * 2);
+  ctx.scale(0.94, 0.94);
+  ctx.fillStyle = "#0008";
+  ctx.beginPath();
+  ctx.ellipse(0, 17, 22, 10, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#232b2a";
+  rounded(ctx, -14, 3, 11, 21, 4);
+  rounded(ctx, 4, 3, 11, 21, 4);
+  ctx.fillStyle = "#6a6655";
+  rounded(ctx, -19, -31, 38, 37, 10);
+  ctx.fillStyle = "#b79672";
+  ctx.beginPath();
+  ctx.arc(0, -40, 14, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#31362f";
+  ctx.beginPath();
+  ctx.arc(0, -44, 15, Math.PI, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#7a513c";
+  rounded(ctx, 13, -6, 14, 20, 4);
+  ctx.fillStyle = "#b7804b";
+  rounded(ctx, 16, -4, 8, 13, 3);
+  if (r.stun > 0) {
+    ctx.fillStyle = "#f5e9c5";
+    ctx.font = "bold 11px Arial";
+    ctx.textAlign = "center";
+    ctx.fillText("ОЙ!", 0, -62);
+  } else if (r.lastStole > 0) {
+    ctx.fillStyle = "#f5e9c5";
+    ctx.font = "bold 11px Arial";
+    ctx.textAlign = "center";
+    ctx.fillText("МОЯ!", 0, -62);
+  }
+  ctx.restore();
+}
+function drawGermanyHero(x, y, t) {
+  ctx.save();
+  ctx.translate(x, y + Math.sin(t * 10) * 1.3);
+  ctx.scale(0.94, 0.94);
+  ctx.fillStyle = "#0008";
+  ctx.beginPath();
+  ctx.ellipse(2, 17, 23, 11, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#1b2733";
+  rounded(ctx, -14, 3, 11, 23, 4);
+  rounded(ctx, 4, 3, 11, 23, 4);
+  ctx.fillStyle = "#d2aa7d";
+  rounded(ctx, -17, -23, 34, 31, 9);
+  ctx.fillStyle = "#314e61";
+  rounded(ctx, -17, -7, 34, 22, 8);
+  ctx.fillStyle = "#ad7545";
+  rounded(ctx, -22, 0, 44, 13, 6);
+  ctx.fillStyle = "#e3bd71";
+  ctx.fillRect(-4, 3, 8, 8);
+  ctx.fillStyle = "#e1b28b";
+  ctx.beginPath();
+  ctx.arc(0, -32, 14, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#48382c";
+  ctx.beginPath();
+  ctx.arc(0, -36, 14, Math.PI, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+function drawGermanyFlags(t) {
+  const flags = [
+    { x: 130, y: 120, type: "de" },
+    { x: 660, y: 145, type: "rainbow" },
+    { x: 1220, y: 230, type: "ua" },
+    { x: 1740, y: 960, type: "gear" },
+    { x: 2220, y: 320, type: "de" },
+  ];
+  for (const f of flags) {
+    ctx.fillStyle = "#7b817c";
+    ctx.fillRect(f.x, f.y, 3, 65);
+    if (f.type === "de") {
+      ctx.fillStyle = "#171a1b";
+      ctx.fillRect(f.x + 3, f.y, 50, 10);
+      ctx.fillStyle = "#d52c38";
+      ctx.fillRect(f.x + 3, f.y + 10, 50, 10);
+      ctx.fillStyle = "#f0c344";
+      ctx.fillRect(f.x + 3, f.y + 20, 50, 10);
+    } else if (f.type === "ua") {
+      ctx.fillStyle = "#2476cf";
+      ctx.fillRect(f.x + 3, f.y, 50, 15);
+      ctx.fillStyle = "#f1d14a";
+      ctx.fillRect(f.x + 3, f.y + 15, 50, 15);
+    } else if (f.type === "rainbow") {
+      const cols = [
+        "#ed4c54",
+        "#ed9144",
+        "#e5cf4d",
+        "#4dbb74",
+        "#3b8dd2",
+        "#9660bd",
+      ];
+      cols.forEach((c, i) => {
+        ctx.fillStyle = c;
+        ctx.fillRect(f.x + 3, f.y + i * 5, 50, 5);
+      });
+    } else {
+      const cx = f.x + 29,
+        cy = f.y + 15;
+      ctx.fillStyle = "#d82731";
+      ctx.fillRect(f.x + 3, f.y, 56, 32);
+      ctx.fillStyle = "#fff";
+      ctx.beginPath();
+      ctx.arc(cx, cy, 12, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.fillStyle = "#53615e";
+      for (let k = 0; k < 8; k++) {
+        ctx.save();
+        ctx.rotate((k * Math.PI) / 4);
+        ctx.fillRect(-2.5, -11, 5, 7);
+        ctx.restore();
+      }
+      ctx.beginPath();
+      ctx.arc(0, 0, 8, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#fff";
+      ctx.beginPath();
+      ctx.arc(0, 0, 3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+    ctx.fillStyle = "#fff";
+    ctx.strokeStyle = "#3d4544";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(f.x + 3, f.y, 56, 32);
+  }
+}
+function showGermanyVictory() {
+  running = false;
+  gameEnded = true;
+  const layer = document.getElementById("intro");
+  layer.classList.remove("hidden");
+  layer.innerHTML = `<section class="card"><div class="eyebrow">ФІНАЛ · НІМЕЧЧИНА · PFAND ЗДАНО</div><h1>Довгий маршрут.<br><em>Щаслива зустріч.</em></h1><p>Герой знаходить Жінку Непальця, трохи ніяковіє й зізнається їй у коханні. Вона усміхається та бере його за руку. Автомат Pfand лишається далеко позаду — нарешті це не його головна проблема.</p><div class="mission"><span>🍾 Пляшки: здано</span><span>💛 Зізнання: зроблено</span><span>🏁 Історія: завершена</span></div><button id="germanyReplayBtn">ПОВТОРИТИ РІВЕНЬ 7　↻</button><button id="germanyDoneBtn" class="secondary">У ГОЛОВНЕ МЕНЮ</button></section>`;
+  document.getElementById("germanyReplayBtn").onclick = startGermanyLevel;
+  document.getElementById("germanyDoneBtn").onclick = () => location.reload();
+}
+
+
+/* Source: js/04-chase.js */
+function showVrFail() {
+  running = false;
+  gameEnded = true;
+  const layer = document.getElementById("intro");
+  layer.classList.remove("hidden");
+  layer.innerHTML = `<section class="card"><div class="eyebrow">VR-ЦЕХ · ПОВТОРНА СПРОБА</div><h1>Сигнал зник.<br><em>Шолом цілий.</em></h1><p>Цементний блок збив героя з ніг. Перепочинь і спробуй знешкодити завод ще раз.</p><button id="retryVrBtn">ПОВТОРИТИ РІВЕНЬ 5　↻</button></section>`;
+  document.getElementById("retryVrBtn").onclick = showVrCutscene;
+}
+let captureStartedAt = 0;
+function showChaseCapture() {
+  if (gameEnded) return;
+  gameEnded = true;
+  running = false;
+  stage = 4;
+  captureStartedAt = performance.now();
+  document.getElementById("intro").classList.add("hidden");
+  chime();
+  requestAnimationFrame(captureLoop);
+}
+function captureLoop(now) {
+  if (!gameEnded || stage !== 4) return;
+  const sec = (now - captureStartedAt) / 1000;
+  drawCaptureCutscene(sec);
+  if (sec < 7.5) requestAnimationFrame(captureLoop);
+  else showCaptureResult();
+}
+function drawCaptureCutscene(sec) {
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = "#111a2b";
+  ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = "#18243a";
+  for (let i = 0; i < 9; i++) {
+    const x = i * 158 - 22,
+      h = 170 + ((i * 47) % 180);
+    ctx.fillRect(x, 70, 130, h);
+    ctx.fillStyle = "#e7bd64";
+    for (let wy = 92; wy < 70 + h - 20; wy += 38)
+      for (let wx = x + 15; wx < x + 120; wx += 31) {
+        ctx.fillRect(wx, wy, 9, 13);
+      }
+    ctx.fillStyle = "#18243a";
+  }
+  ctx.fillStyle = "#414c57";
+  ctx.fillRect(0, 430, W, 250);
+  ctx.fillStyle = "#d7c982";
+  ctx.fillRect(0, 424, W, 7);
+  ctx.fillRect(0, 680, W, 7);
+  ctx.fillStyle = "#d9d4b2";
+  for (let x = 45; x < W; x += 170) ctx.fillRect(x, 546, 82, 7);
+  for (const [lx, ly] of [
+    [130, 300],
+    [1140, 310],
+  ]) {
+    ctx.fillStyle = "#202b34";
+    ctx.fillRect(lx - 4, ly, 8, 155);
+    const glow = ctx.createRadialGradient(lx, ly + 15, 5, lx, ly + 15, 220);
+    glow.addColorStop(0, "rgba(255,215,130,.26)");
+    glow.addColorStop(1, "rgba(255,215,130,0)");
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(lx, ly + 15, 220, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  const vanX =
+      sec < 1.25
+        ? 1300 - 370 * Math.min(1, sec / 1.25)
+        : sec < 4.8
+          ? 930
+          : 930 + Math.min(520, (sec - 4.8) * 260),
+    vanY = 365;
+  ctx.save();
+  ctx.translate(vanX, vanY);
+  if (sec >= 4.8) ctx.rotate(Math.min(Math.PI / 2, (sec - 4.8) * 2.2));
+  ctx.fillStyle = "#0008";
+  rounded(ctx, -45, -72, 90, 153, 18);
+  ctx.fillStyle = "#465142";
+  rounded(ctx, -42, -75, 84, 148, 18);
+  ctx.fillStyle = "#63704f";
+  rounded(ctx, -35, -67, 70, 125, 12);
+  ctx.fillStyle = "#17232a";
+  rounded(ctx, -28, -51, 56, 38, 8);
+  ctx.fillStyle = "#a9d7ce";
+  rounded(ctx, -23, -46, 46, 26, 5);
+  ctx.fillStyle = "#29332e";
+  rounded(ctx, -29, 2, 58, 43, 9);
+  ctx.fillStyle = "#d7dfc9";
+  ctx.font = "900 18px Arial,sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText("ТЦК", 0, 28);
+  ctx.fillStyle = "#f7dc92";
+  ctx.fillRect(-32, -72, 15, 5);
+  ctx.fillRect(17, -72, 15, 5);
+  ctx.fillStyle = "#141b20";
+  rounded(ctx, -47, -48, 8, 33, 3);
+  rounded(ctx, 39, -48, 8, 33, 3);
+  rounded(ctx, -47, 29, 8, 34, 3);
+  rounded(ctx, 39, 29, 8, 34, 3);
+  if (sec > 1 && sec < 4.8) {
+    ctx.fillStyle = "#18242a";
+    ctx.fillRect(-31, 68, 62, 8);
+    ctx.fillStyle = "#a6afa0";
+    ctx.fillRect(-30, 75, 60, 3);
+  }
+  ctx.restore();
+  // The scooter skids and stays behind while the rider falls, then officers move the rider into the van.
+  const fall = Math.min(1, sec / 0.9),
+    approach = Math.max(0, Math.min(1, (sec - 1.6) / 2.9)),
+    riderX = sec < 1.6 ? 565 : 565 + approach * 285,
+    riderY = 440 + Math.sin(Math.min(sec, 1) * Math.PI) * 10;
+  drawCineScooter(470, 465, sec);
+  if (sec < 4.45) {
+    drawCinePerson(
+      riderX,
+      riderY,
+      sec < 1.2
+        ? fall * 1.25
+        : sec < 2
+          ? Math.max(0, 1.25 * (1 - (sec - 1.2) / 0.8))
+          : 0,
+      "#df7647",
+      "#f0b844",
+      sec < 1.2,
+    );
+    if (sec > 1.5 && sec < 4.5) {
+      const q = Math.min(1, (sec - 1.5) / 2.7);
+      drawCineOfficer(560 + q * 220, 396, "#7f8764", sec);
+      drawCineOfficer(555 + q * 220, 487, "#6d795d", sec + 1);
+    }
+  }
+  if (sec < 1.35) {
+    ctx.fillStyle = "#ffe286";
+    ctx.font = "900 30px Arial,sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText("ОЙ!", 550, 365);
+  }
+  ctx.fillStyle = "#fff";
+  ctx.font = "bold 22px Arial,sans-serif";
+  ctx.textAlign = "left";
+  const caption =
+    sec < 1.2
+      ? "Самокат ковзнув на мокрій дорозі…"
+      : sec < 3.4
+        ? "Бус зупинився. Двері відчинилися."
+        : sec < 5
+          ? "Героя посадили всередину…"
+          : "Бус поїхав. Самокат залишився.";
+  ctx.fillText(caption, 42, 75);
+  ctx.fillStyle = "#fff";
+  ctx.font = "bold 16px Arial,sans-serif";
+  ctx.fillText("РІВЕНЬ 3 · НІЧНА ПОГОНЯ", 42, 108);
+}
+function drawCineScooter(x, y, t) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(-0.22 + Math.sin(Math.min(t, 1) * 5) * 0.06);
+  ctx.fillStyle = "#0007";
+  ctx.beginPath();
+  ctx.ellipse(0, 4, 17, 59, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#111a22";
+  rounded(ctx, -10, -55, 20, 20, 7);
+  rounded(ctx, -10, 35, 20, 20, 7);
+  ctx.fillStyle = "#b5c3c7";
+  ctx.beginPath();
+  ctx.arc(0, -45, 5, 0, Math.PI * 2);
+  ctx.arc(0, 45, 5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#35d6c0";
+  rounded(ctx, -9, -39, 18, 78, 7);
+  ctx.fillStyle = "#f5d576";
+  rounded(ctx, -27, -52, 54, 8, 4);
+  ctx.restore();
+}
+function drawCinePerson(x, y, angle, shirt, helmet, fallen) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(angle);
+  ctx.fillStyle = "#0007";
+  ctx.beginPath();
+  ctx.ellipse(2, 9, 24, 35, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#1a2830";
+  rounded(ctx, -11, 8, 9, 20, 4);
+  rounded(ctx, 3, 8, 9, 20, 4);
+  ctx.fillStyle = shirt;
+  rounded(ctx, -15, -8, 30, 26, 9);
+  ctx.strokeStyle = shirt;
+  ctx.lineWidth = 7;
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.moveTo(-11, -1);
+  ctx.lineTo(-22, -25);
+  ctx.moveTo(11, -1);
+  ctx.lineTo(22, -25);
+  ctx.stroke();
+  ctx.fillStyle = "#f0c18d";
+  ctx.beginPath();
+  ctx.arc(0, -19, 13, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = helmet;
+  ctx.beginPath();
+  ctx.arc(0, -21, 14, Math.PI, Math.PI * 2);
+  ctx.fill();
+  if (fallen) {
+    ctx.fillStyle = "#ffe78c";
+    ctx.beginPath();
+    ctx.arc(0, -45, 6, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+function drawCineOfficer(x, y, uniform, t) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(-Math.PI / 2);
+  ctx.fillStyle = "#0006";
+  ctx.beginPath();
+  ctx.ellipse(2, 8, 17, 24, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#1a2427";
+  rounded(ctx, -8, 6, 7, 17, 3);
+  rounded(ctx, 2, 6, 7, 17, 3);
+  ctx.fillStyle = uniform;
+  rounded(ctx, -13, -12, 26, 23, 8);
+  ctx.fillStyle = "#394332";
+  ctx.beginPath();
+  ctx.arc(0, -18, 11, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#28352d";
+  rounded(ctx, -12, -25, 24, 7, 3);
+  ctx.fillStyle = "#dfbd6a";
+  ctx.fillRect(-3, -22, 6, 3);
+  ctx.restore();
+}
+function showCaptureResult() {
+  const layer = document.getElementById("intro");
+  layer.classList.remove("hidden");
+  layer.innerHTML = `<section class="card"><div class="eyebrow">РІВЕНЬ 3 · ФІНАЛ ПОГОНІ</div><h1>От халепа.<br><em>Бус поїхав.</em></h1><p>Самокат лишився на мокрій вулиці. Герой — у бусі. Далі шлях веде до навчального центру.</p><div class="mission"><span>🚨 Погоня завершена</span><span>🛴 Самокат залишився на дорозі</span></div><button id="retryChaseBtn">ПОВТОРИТИ РІВЕНЬ 3　↻</button> <button id="continueLevel4Btn" class="secondary">ПЕРЕЙТИ ДО РІВНЯ 4　→</button><br><button id="returnMenuBtn" class="secondary">ГОЛОВНЕ МЕНЮ</button></section>`;
+  document.getElementById("retryChaseBtn").onclick = startLevel3;
+  document.getElementById("continueLevel4Btn").onclick = startLevel4;
+  document.getElementById("returnMenuBtn").onclick = () => location.reload();
+}
+function updateChase(dt) {
+  updateCityTraffic(dt);
+  const { x: dx, y: dy } = movementAxes();
+  if (!churchEventUsed && Math.hypot(player.x - 700, player.y - 760) < 165) {
+    churchEventUsed = true;
+    chaseVan.stun = 2.2;
+    showToast("ЦЕРКОВНИЙ ДЗВІН ЗБИВ БУС З КУРСУ · +2 СЕК");
+    chime();
+  }
+  if (!azotEventUsed && Math.hypot(player.x - 2760, player.y - 2110) < 190) {
+    azotEventUsed = true;
+    chaseVan.stun = 1.7;
+    player.boost = 0.8;
+    showToast("АЗОТІВСЬКА ПАРА ЗАВАДИЛА ПЕРЕСЛІДУВАЧАМ");
+    tone(280, 0.16, "sawtooth", 0.035, 180);
+  }
+  const onRoad =
+      roadsX.some((x) => Math.abs(x - player.x) < roadW / 2 - 18) ||
+      roadsY.some((y) => Math.abs(y - player.y) < roadW / 2 - 18),
+    accel = onRoad ? 1280 : 820,
+    max = (onRoad ? 455 : 325) * (player.boost > 0 ? 1.65 : 1);
+  if (dx || dy) {
+    player.vx += dx * accel * dt;
+    player.vy += dy * accel * dt;
+    player.dir = Math.atan2(player.vy, player.vx);
+  } else {
+    player.vx *= Math.pow(0.08, dt);
+    player.vy *= Math.pow(0.08, dt);
+  }
+  if (boostPressed) {
+    boostPressed = false;
+    if (player.boostCd <= 0) {
+      player.boost = 0.7;
+      player.boostCd = 2.1;
+      const n = Math.hypot(player.vx, player.vy) || 1;
+      player.vx += (player.vx / n) * 240;
+      player.vy += (player.vy / n) * 240;
+      tone(300, 0.14, "sawtooth", 0.04, 350);
+    }
+  }
+  player.boostCd = Math.max(0, player.boostCd - dt);
+  player.boost = Math.max(0, player.boost - dt);
+  let sp = Math.hypot(player.vx, player.vy);
+  if (sp > max) {
+    player.vx = (player.vx / sp) * max;
+    player.vy = (player.vy / sp) * max;
+  }
+  const ox = player.x,
+    oy = player.y;
+  player.x = clamp(player.x + player.vx * dt, 24, world.w - 24);
+  player.y = clamp(player.y + player.vy * dt, 24, world.h - 24);
+  for (const b of buildings) {
+    const dx = player.x - b.x,
+      dy = player.y - b.y;
+    if (Math.abs(dx) < b.w / 2 + 15 && Math.abs(dy) < b.h / 2 + 15) {
+      player.x = ox;
+      player.y = oy;
+      player.vx *= -0.2;
+      player.vy *= -0.2;
+      player.bump = 0.35;
+    }
+  }
+  for (const car of cars) {
+    if (Math.abs(player.x - car.x) < 43 && Math.abs(player.y - car.y) < 32) {
+      player.x = ox;
+      player.y = oy;
+      player.vx *= -0.35;
+      player.vy *= -0.35;
+      player.bump = 0.55;
+      score = Math.max(0, score - 10);
+      tone(125, 0.1, "square", 0.03, -35);
+    }
+  }
+  player.bump = Math.max(0, player.bump - dt);
+  const vSpeed = 252;
+  chaseVan.stun = Math.max(0, (chaseVan.stun || 0) - dt);
+  const vanRoute = cityRoute(chaseVan, player),
+    vanTarget =
+      vanRoute.find(
+        (q, i) => i > 0 && Math.hypot(q.x - chaseVan.x, q.y - chaseVan.y) > 30,
+      ) || player,
+    routeLen = Math.hypot(vanTarget.x - chaseVan.x, vanTarget.y - chaseVan.y);
+  chaseVan.vx = routeLen ? ((vanTarget.x - chaseVan.x) / routeLen) * vSpeed : 0;
+  chaseVan.vy = routeLen ? ((vanTarget.y - chaseVan.y) / routeLen) * vSpeed : 0;
+  if (chaseVan.stun <= 0) {
+    chaseVan.x = clamp(chaseVan.x + chaseVan.vx * dt, 20, world.w - 20);
+    chaseVan.y = clamp(chaseVan.y + chaseVan.vy * dt, 20, world.h - 20);
+  }
+  for (const p of pedestrians) {
+    const px = p.x - chaseVan.x,
+      py = p.y - chaseVan.y,
+      pd = Math.hypot(px, py) || 1;
+    if (pd < 290) {
+      p.x = clamp(p.x + (px / pd) * 195 * dt, 0, world.w);
+      p.y = clamp(p.y + (py / pd) * 195 * dt, 0, world.h);
+      p.fleeing = 0.65;
+    }
+  }
+  if (Math.hypot(player.x - chaseVan.x, player.y - chaseVan.y) < 82) {
+    showChaseCapture();
+    return;
+  }
+  if (!chaseMarkerActive && time <= 20) {
+    chaseMarkerActive = true;
+    document.getElementById("objectiveTitle").textContent = "БЕЗПЕЧНЕ МІСЦЕ";
+    document.getElementById("objectiveText").textContent =
+      "Маркер уже на мапі. До нього ще є час — тримай курс!";
+    showToast("МАРШРУТ ВІДКРИТО: БЕЗПЕЧНЕ МІСЦЕ");
+    chime();
+  }
+  if (chaseMarkerActive) {
+    const d = routeDistance(cityRoute(player, chaseDestination));
+    document.getElementById("objectiveText").textContent =
+      `Безпечне місце попереду · ${Math.round(d)} м`;
+    if (d < 155) {
+      showChaseCapture();
+      return;
+    }
+  }
+  const gap = Math.round(
+    Math.hypot(player.x - chaseVan.x, player.y - chaseVan.y),
+  );
+  document.getElementById("delivered").textContent = `${gap} м`;
+  document.getElementById("speedValue").textContent = Math.round(
+    Math.hypot(player.vx, player.vy) * 0.21,
+  );
+  document.getElementById("timer").textContent = formatTime(time);
+  document.getElementById("score").textContent = String(score).padStart(4, "0");
+  document.getElementById("boostMeter").style.transform =
+    `scaleX(${player.boostCd ? 1 - player.boostCd / 2.1 : 1})`;
+}
+function togglePause() {
+  if (!running || gameEnded) return;
+  paused = !paused;
+  document.getElementById("pause").classList.toggle("show", paused);
+  if (!paused) {
+    last = performance.now();
+    scheduleLoop();
+  }
+}
+function finish(success = false) {
+  if (gameEnded) return;
+  gameEnded = true;
+  running = false;
+  chime();
+  document.getElementById("objectiveTitle").textContent = success
+    ? "ЗМІНА ЗАВЕРШЕНА"
+    : "ЧАС ВИЙШОВ";
+  document.getElementById("objectiveText").textContent = success
+    ? "Усі столики обслужені. На вулиці починається наступна пригода."
+    : "Зміна закінчилася. Кухня зачекає на наступний рейс.";
+  const layer = document.getElementById("intro");
+  layer.classList.remove("hidden");
+  const result = success
+    ? `Гостей обслужено: <b>${cafeServed} / 10</b>. Кафе вижило, сирники теж.`
+    : `Посилок доставлено: <b>${delivered}</b>. Столиків обслужено: <b>${cafeServed} / 10</b>.`;
+  layer.innerHTML = `<section class="card"><div class="eyebrow">СМІЛА · ПІДСУМОК ЗМІНИ</div><h1>${success ? "Кафе врятовано." : "Кур’єр зробив усе, що міг."}<br><em>${success ? "На сьогодні." : "Майже."}</em></h1><p>${result}</p><div class="mission"><span>📦 Доставки <b>${delivered}</b></span><span>🍽 Столики <b>${cafeServed} / 10</b></span><span>✦ Рахунок <b>${String(score).padStart(4, "0")}</b></span></div><button id="${success ? "nextLevelBtn" : "restartBtn"}">${success ? "ПЕРЕЙТИ ДО РІВНЯ 3　→" : "ЩЕ ОДНА ЗМІНА　↻"}</button><p class="micro">Далі буде: самокат, вечірнє місто і дуже підозрілий бус.</p></section>`;
+  if (success)
+    document.getElementById("nextLevelBtn").onclick = showCafeToChaseCutscene;
+  else document.getElementById("restartBtn").onclick = () => location.reload();
+}
+
+
+/* Source: js/05-courier-cafe.js */
+function showCafeCutscene() {
+  buildChaseBackdrop();
+  running = false;
+  paused = false;
+  const layer = document.getElementById("intro");
+  layer.classList.remove("hidden");
+  layer.innerHTML = `<section class="card"><div class="eyebrow">КАТСЦЕНА · VR-КАФЕ · ПІСЛЯ КУР’ЄРСЬКОГО РЕЙДУ</div><h1>Посилки здані.<br><em>Фартух одягнений.</em></h1><p>Самокат нарешті відпочиває під вивіскою кафе. Усередині — шість гостей у великих VR-шоломах. Тепер у меню п’ять страв, а герой уже знімає TikTok про зміну: «кста, сервіс — шось на зумерском». Його типаж — фембой у пастельному худі; герою такий стиль дуже до душі.</p><div class="mission"><span>● Сирники — круглі</span><span>▦ Квадратна піца</span><span>🥫 Куп’янська згущонка</span><span>🥪 Бутерброд зі свининою</span><span>Пельмені «Єрмоліно» · фірмовий логотип</span></div><button id="enterCafeBtn">ЗАЙТИ НА ЗМІНУ　→</button><p class="micro">У кафе: плавний рух, E — взяти страву або подати її; замовлення мають чіткі кольорові мітки.</p></section>`;
+  document.getElementById("enterCafeBtn").onclick = enterCafe;
+}
+function showCafeToChaseCutscene() {
+  running = false;
+  const layer = document.getElementById("intro");
+  layer.classList.remove("hidden");
+  layer.innerHTML = `<section class="card"><div class="eyebrow">КАТСЦЕНА · ПІСЛЯ ЗМІНИ</div><h1>Зміна скінчилась.<br><em>Місто не спить.</em></h1><p>Герой зачиняє VR-кафе, хапає кермо самоката й виїжджає на нічну вулицю. За рогом уже розвертається оливковий бус.</p><div class="mission"><span>🛴 Заряджено</span><span>🌙 Сміла засинає</span><span>🚐 Бус уже рушив</span></div><button id="beginChase">ВИЇХАТИ В НІЧ　→</button></section>`;
+  document.getElementById("beginChase").onclick = startLevel3;
+}
+function enterCafe() {
+  saveCampaignChapter(2);
+  focusGame();
+  document
+    .getElementById("game")
+    .classList.remove("germany-mode", "training-mode");
+  stage = 2;
+  cafeActionCooldown = 0;
+  document.getElementById("game").classList.add("cafe-mode");
+  time = 150;
+  cafeServed = 0;
+  cafeOrdersCreated = 0;
+  heldDish = null;
+  cafeOrders = Array(cafeTables.length).fill(null);
+  for (let i = 0; i < 4; i++) spawnCafeOrder(i);
+  player.x = 640;
+  player.y = 585;
+  player.vx = 0;
+  player.vy = 0;
+  player.dir = 0;
+  interactPressed = false;
+  document.getElementById("delivered").parentElement.firstChild.textContent =
+    "🍽 СТОЛИКИ ";
+  document.getElementById("delivered").textContent = "0 / 10";
+  document.getElementById("timer").textContent = "02:30";
+  document.getElementById("objectiveTitle").textContent = "ЗМІНА: VR-КАФЕ";
+  document.getElementById("objectiveText").textContent =
+    "Бери потрібні страви на кухні, плануй маршрут між столами й не плутай замовлення.";
+  document.querySelector(".mapbox").style.display = "none";
+  document.querySelector(".speed").style.display = "none";
+  setHint(
+    "РУХ <b>WASD / СТРІЛКИ</b>　 ДІЯ <b>E / F / ENTER</b>　 РИВОК <b>SPACE</b>",
+  );
+  document.getElementById("intro").classList.add("hidden");
+  running = true;
+  paused = false;
+  audioStart();
+  showToast("ЗАПАМ’ЯТАЙ СТРАВУ · НЕСИ ЇЇ ДО ВІРНОГО СТОЛИКА");
+  last = performance.now();
+  scheduleLoop();
+}
+function skipCourierLevel() {
+  showCafeCutscene();
+}
+function formatTime(s) {
+  let v = Math.max(0, Math.ceil(s));
+  return `${String(Math.floor(v / 60)).padStart(2, "0")}:${String(v % 60).padStart(2, "0")}`;
+}
+function updateCityTraffic(dt) {
+  for (const c of cars) {
+    const v =
+      (c.speed || 65) *
+      c.dir *
+      dt *
+      (stage === 3 ? 1.75 : stage === 1 ? 1.38 : 1);
+    if (c.horizontal) {
+      c.x += v;
+      if (c.dir > 0 && c.x > world.w + 100) c.x = -100;
+      if (c.dir < 0 && c.x < -100) c.x = world.w + 100;
+    } else {
+      c.y += v;
+      if (c.dir > 0 && c.y > world.h + 100) c.y = -100;
+      if (c.dir < 0 && c.y < -100) c.y = world.h + 100;
+    }
+  }
+  for (const p of pedestrians) {
+    p.stun = Math.max(0, p.stun - dt);
+    p.fleeing = Math.max(0, (p.fleeing || 0) - dt);
+    if (p.stun > 0) continue;
+    const step =
+      p.speed * p.dir * dt * (stage === 3 ? 1.55 : stage === 1 ? 1.28 : 1);
+    if (p.axis === "h") {
+      p.x += step;
+      if (p.x < 0 || p.x > world.w) p.dir *= -1;
+    } else {
+      p.y += step;
+      if (p.y < 0 || p.y > world.h) p.dir *= -1;
+    }
+    if (Math.random() < dt * 0.035) {
+      p.dir *= -1;
+      if (Math.random() < 0.35) p.axis = p.axis === "h" ? "v" : "h";
+    }
+  }
+}
+function drawPedestrian(p, t) {
+  ctx.save();
+  ctx.translate(p.x, p.y + Math.sin(t * 5 + p.phase) * 2);
+  if (p.fleeing > 0) ctx.rotate(Math.sin(t * 18 + p.phase) * 0.16);
+  ctx.fillStyle = "#0004";
+  ctx.beginPath();
+  ctx.ellipse(2, 8, 10, 5, 0, 0, Math.PI * 2);
+  ctx.fill();
+  if (p.stun > 0) {
+    ctx.rotate(Math.sin(t * 24) * 0.3);
+    ctx.fillStyle = "#d9ad82";
+    ctx.beginPath();
+    ctx.arc(0, -10, 7, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = p.color;
+    rounded(ctx, -7, -3, 14, 13, 5);
+    ctx.restore();
+    if (Math.floor(t * 8) % 2 === 0) {
+      ctx.fillStyle = "#fff1a3";
+      ctx.font = "bold 13px Arial";
+      ctx.textAlign = "center";
+      ctx.fillText("✦", p.x, p.y - 24);
+    }
+    return;
+  }
+  ctx.fillStyle = p.color;
+  rounded(ctx, -6, -5, 12, 14, 4);
+  ctx.fillStyle = "#26353c";
+  ctx.fillRect(-5, 7, 4, 8);
+  ctx.fillRect(2, 7, 4, 8);
+  ctx.fillStyle = "#d9ad82";
+  ctx.beginPath();
+  ctx.arc(0, -10, 7, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+  if (p.fleeing > 0) {
+    ctx.fillStyle = "#ffdf80";
+    ctx.font = "900 14px Arial";
+    ctx.textAlign = "center";
+    ctx.fillText("!", p.x, p.y - 24);
+  }
+}
+let chaseBackdrop = null,
+  buildingBackdrop = false;
+function drawGround() {
+  const night = stage === 3;
+  ctx.fillStyle = night ? "#19242a" : "#9bb58b";
+  ctx.fillRect(0, 0, world.w, world.h);
+  ctx.save();
+  ctx.globalAlpha = night ? 0.38 : 0.13;
+  ctx.strokeStyle = night ? "#29363c" : "#e6e2bd";
+  ctx.lineWidth = 2;
+  for (let x = 20; x < world.w; x += 48) {
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, world.h);
+    ctx.stroke();
+  }
+  for (let y = 15; y < world.h; y += 48) {
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(world.w, y);
+    ctx.stroke();
+  }
+  ctx.restore();
+  for (let i = 0; i < roadsX.length - 1; i++)
+    for (let j = 0; j < roadsY.length - 1; j++) {
+      const x = roadsX[i] + 120,
+        y = roadsY[j] + 120;
+      ctx.fillStyle = night ? "#202c30" : "#86a57f";
+      rounded(ctx, x, y, 420, 400, 14);
+      ctx.fillStyle = night ? "#263639" : "#aac19a";
+      rounded(ctx, x + 15, y + 15, 390, 370, 12);
+    }
+  ctx.fillStyle = night ? "#3c4141" : "#b7b9a4";
+  roadsX.forEach((x) => {
+    ctx.fillRect(x - roadW / 2 - 20, 0, roadW + 40, world.h);
+    ctx.fillStyle = night ? "#171d22" : "#48515a";
+    ctx.fillRect(x - roadW / 2, 0, roadW, world.h);
+    ctx.fillStyle = night ? "#3c4141" : "#b7b9a4";
+  });
+  roadsY.forEach((y) => {
+    ctx.fillRect(0, y - roadW / 2 - 20, world.w, roadW + 40);
+    ctx.fillStyle = night ? "#171d22" : "#48515a";
+    ctx.fillRect(0, y - roadW / 2, world.w, roadW);
+    ctx.fillStyle = night ? "#3c4141" : "#b7b9a4";
+  });
+  ctx.save();
+  ctx.setLineDash([24, 22]);
+  ctx.strokeStyle = night ? "#8c7751" : "#e8d997";
+  ctx.lineWidth = 4;
+  roadsX.forEach((x) => {
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, world.h);
+    ctx.stroke();
+  });
+  roadsY.forEach((y) => {
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(world.w, y);
+    ctx.stroke();
+  });
+  ctx.restore();
+  ctx.fillStyle = night ? "#9a8a67" : "#f1e6c4";
+  roadsX.forEach((x) =>
+    roadsY.forEach((y) => {
+      for (let k = -2; k <= 2; k++) {
+        ctx.fillRect(x + k * 12 - 3, y - 116, 6, 30);
+        ctx.fillRect(x + k * 12 - 3, y + 86, 6, 30);
+        ctx.fillRect(x - 116, y + k * 12 - 3, 30, 6);
+        ctx.fillRect(x + 86, y + k * 12 - 3, 30, 6);
+      }
+    }),
+  );
+}
+function drawScenery(t) {
+  const night = stage === 3,
+    minX = buildingBackdrop ? 0 : player.x - W * 0.6,
+    maxX = buildingBackdrop ? world.w : player.x + W * 0.6,
+    minY = buildingBackdrop ? 0 : player.y - H * 0.6,
+    maxY = buildingBackdrop ? world.h : player.y + H * 0.6;
+  for (const b of buildings) {
+    if (
+      b.x + b.w < minX ||
+      b.x - b.w > maxX ||
+      b.y + b.h < minY ||
+      b.y - b.h > maxY
+    )
+      continue;
+    ctx.fillStyle = "#0005";
+    rounded(ctx, b.x - b.w / 2 + 6, b.y - b.h / 2 + 8, b.w, b.h, 7);
+    ctx.fillStyle = night ? "#42494b" : "#d2cbb1";
+    rounded(ctx, b.x - b.w / 2 - 3, b.y - b.h / 2 - 3, b.w + 6, b.h + 6, 7);
+    ctx.fillStyle = night ? "#27343a" : b.roof;
+    rounded(ctx, b.x - b.w / 2, b.y - b.h / 2, b.w, b.h, 6);
+    ctx.fillStyle = night ? "#34434a" : b.c;
+    rounded(ctx, b.x - b.w / 2 + 5, b.y - b.h / 2 + 6, b.w - 10, b.h - 16, 5);
+    ctx.fillStyle = night ? "#62635c" : "#d7d0b1";
+    ctx.fillRect(b.x - b.w / 2 + 7, b.y + b.h / 2 - 16, b.w - 14, 9);
+    for (let wx = b.x - b.w / 2 + 12; wx < b.x + b.w / 2 - 9; wx += 19)
+      for (let wy = b.y - b.h / 2 + 13; wy < b.y + b.h / 2 - 16; wy += 21) {
+        ctx.fillStyle = night
+          ? (Math.floor(wx / 19) +
+              Math.floor(wy / 21) +
+              Math.floor(b.kind * 4)) %
+              4 ===
+            0
+            ? "#f2cb7b"
+            : "#45545b"
+          : "#a7d4cf";
+        ctx.fillRect(wx, wy, 8, 7);
+        ctx.fillStyle = night ? "#b99058" : "#debe82";
+        ctx.fillRect(wx + 3, wy + 7, 2, 7);
+      }
+    if (b.kind > 0.92) {
+      ctx.fillStyle = night ? "#d5ad64" : "#f0d889";
+      ctx.fillRect(b.x - 7, b.y - b.h / 2 + 2, 14, 5);
+    }
+  }
+  for (const tr of trees) {
+    if (tr.x < minX || tr.x > maxX || tr.y < minY || tr.y > maxY) continue;
+    ctx.fillStyle = "#0005";
+    ctx.beginPath();
+    ctx.ellipse(tr.x + 5, tr.y + 9, tr.r * 1.1, tr.r * 0.7, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = night ? "#332b28" : "#795f48";
+    ctx.fillRect(tr.x - 3, tr.y - 2, 6, 14);
+    ctx.fillStyle = night ? "#152b26" : "#507c53";
+    ctx.beginPath();
+    ctx.arc(tr.x, tr.y - 3, tr.r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = night ? "#1d3830" : "#78a96a";
+    ctx.beginPath();
+    ctx.arc(tr.x - 5, tr.y - 8, tr.r * 0.57, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = night ? "#7d744f" : "#b7ce76";
+    ctx.beginPath();
+    ctx.arc(tr.x + 5, tr.y - 5, 3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  for (let y = 120; y < world.h; y += 270)
+    for (const x of roadsX) {
+      ctx.fillStyle = night ? "#ffffff10" : "#ffffff18";
+      ctx.fillRect(x - roadW / 2 + 8, y, 15, 40);
+      ctx.strokeStyle = night ? "#343a3c" : "#323b40";
+      for (let k = 0; k < 5; k++) {
+        ctx.beginPath();
+        ctx.moveTo(x - roadW / 2 + 10, y + k * 8);
+        ctx.lineTo(x - roadW / 2 + 22, y + k * 8);
+        ctx.stroke();
+      }
+    }
+  for (const p of puddles) {
+    if (
+      p.x + p.rx < minX ||
+      p.x - p.rx > maxX ||
+      p.y + p.ry < minY ||
+      p.y - p.ry > maxY
+    )
+      continue;
+    ctx.fillStyle = night ? "#3a6b8140" : "#66b6c64a";
+    ctx.beginPath();
+    ctx.ellipse(p.x, p.y, p.rx, p.ry, -0.2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = night ? "#b1c6cc55" : "#d8f0e873";
+    ctx.beginPath();
+    ctx.ellipse(
+      p.x - 3,
+      p.y - 2,
+      p.rx * 0.55,
+      p.ry * 0.3,
+      -0.2,
+      Math.PI,
+      Math.PI * 2,
+    );
+    ctx.stroke();
+  }
+  for (const p of pigeons) {
+    if (p.x < minX || p.x > maxX || p.y < minY || p.y > maxY) continue;
+    const flap = Math.sin(t * 8 + p.phase);
+    ctx.fillStyle = night ? "#303a40" : "#394b51";
+    ctx.beginPath();
+    ctx.ellipse(p.x, p.y, 7, 4, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(p.x - 2, p.y);
+    ctx.quadraticCurveTo(p.x - 8, p.y - 5 - flap * 2, p.x - 10, p.y - 1);
+    ctx.quadraticCurveTo(p.x - 5, p.y - 2, p.x, p.y + 1);
+    ctx.fill();
+    ctx.fillStyle = night ? "#b8a06b" : "#e5bd62";
+    ctx.fillRect(p.x + 6, p.y - 1, 3, 2);
+  }
+}
+function drawSmilaLandmarks(t) {
+  ctx.save();
+  ctx.translate(700, 760);
+  ctx.fillStyle = "#0005";
+  ctx.beginPath();
+  ctx.ellipse(0, 68, 112, 28, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#d8d0ba";
+  rounded(ctx, -92, -5, 184, 77, 7);
+  ctx.fillStyle = "#b94a43";
+  ctx.beginPath();
+  ctx.moveTo(-104, 2);
+  ctx.lineTo(0, -65);
+  ctx.lineTo(104, 2);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = "#35414b";
+  ctx.fillRect(-19, 22, 38, 50);
+  ctx.fillStyle = "#f6da8b";
+  ctx.beginPath();
+  ctx.arc(0, -49, 5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#21303a";
+  rounded(ctx, -83, -23, 166, 21, 5);
+  ctx.fillStyle = "#fff4dd";
+  ctx.font = "bold 11px Arial";
+  ctx.textAlign = "center";
+  ctx.fillText("СВЯТА ЦЕРКВА СМІЛИ", 0, -8);
+  ctx.restore();
+  ctx.save();
+  ctx.translate(2760, 2110);
+  ctx.fillStyle = "#273236";
+  rounded(ctx, -175, -60, 350, 124, 11);
+  ctx.fillStyle = "#566466";
+  rounded(ctx, -151, -48, 110, 105, 5);
+  ctx.fillStyle = "#7a8581";
+  ctx.fillRect(-135, -35, 82, 10);
+  ctx.fillStyle = "#87918b";
+  ctx.fillRect(-135, -14, 82, 8);
+  ctx.fillStyle = "#3c4849";
+  rounded(ctx, 8, -31, 95, 91, 5);
+  for (const [x, h] of [
+    [-109, 105],
+    [-30, 145],
+    [53, 124],
+  ]) {
+    ctx.fillStyle = "#515d5e";
+    ctx.fillRect(x, -60 - h, 29, h);
+    ctx.fillStyle = "#d47f58";
+    ctx.fillRect(x + 8, -67 - h, 12, 7);
+    for (let k = 0; k < 3; k++) {
+      ctx.globalAlpha = 0.16;
+      ctx.fillStyle = "#b6beb5";
+      ctx.beginPath();
+      ctx.arc(
+        x + 14,
+        Math.sin(t + k) * 4 - 74 - h - k * 16,
+        11 + k * 3,
+        0,
+        Math.PI * 2,
+      );
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+  ctx.fillStyle = "#f1ca80";
+  ctx.font = "900 17px Arial";
+  ctx.textAlign = "center";
+  ctx.fillText("АЗОТ · СМІЛА", 0, 84);
+  ctx.restore();
+}
+function drawDistrict() {
+  // title mural / plaza lettering, no external assets
+  const fx = 1740,
+    fy = 1640;
+  ctx.save();
+  ctx.translate(fx, fy);
+  ctx.fillStyle = "#d4c394";
+  rounded(ctx, -123, -95, 246, 190, 13);
+  ctx.fillStyle = "#61756b";
+  rounded(ctx, -110, -83, 220, 166, 9);
+  ctx.fillStyle = "#4a625b";
+  rounded(ctx, -91, -63, 182, 126, 8);
+  ctx.fillStyle = "#ead79b";
+  ctx.font = "bold 16px sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText("СМІЛА", 0, -11);
+  ctx.font = "11px sans-serif";
+  ctx.fillText("МІСТО ВЕЛИКИХ МАРШРУТІВ", 0, 10);
+  ctx.fillStyle = "#e89061";
+  ctx.beginPath();
+  ctx.arc(0, 38, 8, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#8fb5a2";
+  ctx.fillRect(-55, 46, 110, 3);
+  ctx.restore();
+  // roadside park band
+  ctx.fillStyle = "#83a975";
+  ctx.fillRect(1910, 1510, 220, 250);
+  ctx.fillStyle = "#9bbd83";
+  for (let i = 0; i < 9; i++) {
+    let x = 1930 + (i % 3) * 66,
+      y = 1535 + Math.floor(i / 3) * 68;
+    ctx.beginPath();
+    ctx.arc(x, y, 19, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#547e55";
+    ctx.beginPath();
+    ctx.arc(x - 4, y - 5, 13, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#9bbd83";
+  }
+}
+function drawCar(car, t) {
+  let bob = Math.sin(t * 2 + car.phase) * 1.5;
+  ctx.save();
+  ctx.translate(car.x, car.y + bob);
+  ctx.rotate(car.horizontal ? 0 : Math.PI / 2);
+  ctx.fillStyle = "#0005";
+  rounded(ctx, -29, -13, 62, 32, 9);
+  ctx.fillStyle = car.color;
+  rounded(ctx, -32, -16, 64, 30, 8);
+  ctx.fillStyle = "#283940";
+  rounded(ctx, -14, -12, 28, 22, 6);
+  ctx.fillStyle = "#9fcac5";
+  ctx.fillRect(-10, -10, 20, 7);
+  ctx.fillStyle = "#313841";
+  ctx.fillRect(-28, -20, 12, 5);
+  ctx.fillRect(16, -20, 12, 5);
+  ctx.fillRect(-28, 15, 12, 5);
+  ctx.fillRect(16, 15, 12, 5);
+  ctx.fillStyle = "#fff1be";
+  ctx.fillRect(28, -11, 3, 5);
+  ctx.fillRect(28, 7, 3, 5);
+  ctx.restore();
+}
+function drawDelivery(d, i, t) {
+  if (!d || d.done) return;
+  const pulse = 1 + Math.sin(t * 3 + i) * 0.08;
+  ctx.save();
+  ctx.translate(d.x, d.y);
+  ctx.fillStyle = d.color + "24";
+  ctx.beginPath();
+  ctx.arc(0, 0, 77 * pulse, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = d.color;
+  ctx.globalAlpha = 0.45 + 0.4 * Math.sin(t * 4 + i);
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.arc(0, 0, 55 * pulse, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = "#17232d";
+  rounded(ctx, -91, -43, 182, 85, 10);
+  ctx.fillStyle = "#fff";
+  rounded(ctx, -87, -39, 174, 77, 8);
+  const logo = logos[d.brand];
+  if (logo?.complete && logo.naturalWidth) {
+    if (d.brand === "meest")
+      ctx.drawImage(logo, 39, 139, 357, 140, -72, -33, 144, 54);
+    else {
+      const ratio = Math.min(162 / logo.width, 43 / logo.height),
+        w = logo.width * ratio,
+        h = logo.height * ratio;
+      ctx.drawImage(logo, -w / 2, -28, w, h);
+    }
+  } else {
+    ctx.fillStyle = d.color;
+    ctx.font = "bold 16px Arial,sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText(d.name, 0, -6);
+  }
+  ctx.fillStyle = "#53636a";
+  ctx.font = "bold 10px Arial,sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText(d.sub, 0, 27);
+  ctx.fillStyle = "#17202b";
+  ctx.beginPath();
+  ctx.arc(-78, 42, 6, 0, Math.PI * 2);
+  ctx.arc(78, 42, 6, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#f7d78b";
+  ctx.beginPath();
+  ctx.moveTo(0, -56);
+  ctx.lineTo(-9, -70);
+  ctx.lineTo(-3, -70);
+  ctx.lineTo(-3, -86);
+  ctx.lineTo(3, -86);
+  ctx.lineTo(3, -70);
+  ctx.lineTo(9, -70);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+function drawPlayer(t) {
+  ctx.save();
+  ctx.translate(player.x, player.y);
+  ctx.rotate(player.dir + Math.PI / 2);
+  ctx.scale(stage === 3 ? 0.7 : 0.62, stage === 3 ? 0.7 : 0.62);
+  if (player.boost > 0) {
+    ctx.globalAlpha = 0.72;
+    ctx.fillStyle = "#65f1dc";
+    for (let i = 0; i < 4; i++) {
+      ctx.beginPath();
+      ctx.ellipse(0, 42 + i * 8, 9 - i, 14, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+  ctx.fillStyle = "#0008";
+  ctx.beginPath();
+  ctx.ellipse(2, 9, 30, 47, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#101820";
+  ctx.beginPath();
+  ctx.ellipse(0, -47, 13, 16, 0, 0, Math.PI * 2);
+  ctx.ellipse(0, 46, 13, 16, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = "#d9e8e5";
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.ellipse(0, -47, 8, 10, 0, 0, Math.PI * 2);
+  ctx.ellipse(0, 46, 8, 10, 0, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.fillStyle = "#47e5d2";
+  ctx.beginPath();
+  ctx.arc(0, -47, 4, 0, Math.PI * 2);
+  ctx.arc(0, 46, 4, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#1b3440";
+  rounded(ctx, -13, -32, 26, 63, 8);
+  ctx.fillStyle = "#41d8c2";
+  rounded(ctx, -9, -29, 18, 57, 6);
+  ctx.fillStyle = "#f6d46e";
+  rounded(ctx, -30, -43, 60, 8, 4);
+  ctx.fillStyle = "#202b35";
+  rounded(ctx, -33, -44, 9, 10, 4);
+  rounded(ctx, 24, -44, 9, 10, 4);
+  ctx.strokeStyle = "#defff7";
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(0, -39);
+  ctx.lineTo(0, -29);
+  ctx.stroke();
+  ctx.fillStyle = "#17232d";
+  rounded(ctx, -14, 8, 11, 21, 4);
+  rounded(ctx, 3, 8, 11, 21, 4);
+  ctx.fillStyle = "#f2c974";
+  rounded(ctx, -16, 23, 14, 7, 3);
+  rounded(ctx, 2, 23, 14, 7, 3);
+  ctx.fillStyle = "#e57948";
+  rounded(ctx, -15, -7, 30, 26, 9);
+  ctx.fillStyle = "#263d49";
+  rounded(ctx, -13, -3, 26, 20, 6);
+  ctx.fillStyle = "#eebf64";
+  rounded(ctx, -11, 0, 22, 15, 4);
+  ctx.fillStyle = "#f5e0a0";
+  ctx.fillRect(-2, 0, 4, 15);
+  ctx.strokeStyle = "#f8c49b";
+  ctx.lineWidth = 7;
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.moveTo(-11, -1);
+  ctx.lineTo(-21, -13);
+  ctx.lineTo(-27, -39);
+  ctx.moveTo(11, -1);
+  ctx.lineTo(21, -13);
+  ctx.lineTo(27, -39);
+  ctx.stroke();
+  ctx.fillStyle = "#ffe28d";
+  ctx.beginPath();
+  ctx.arc(-27, -40, 4, 0, Math.PI * 2);
+  ctx.arc(27, -40, 4, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#f0a845";
+  ctx.beginPath();
+  ctx.arc(0, -21, 14, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#253b45";
+  rounded(ctx, -11, -25, 22, 10, 5);
+  ctx.fillStyle = "#a8f4ed";
+  rounded(ctx, -7, -22, 14, 4, 2);
+  ctx.restore();
+  if (player.bump > 0) {
+    ctx.save();
+    ctx.globalAlpha = Math.min(1, player.bump * 2);
+    ctx.fillStyle = "#fff1a6";
+    ctx.font = "bold 16px Arial,sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText("ОЙ!", player.x + 25, player.y - 26);
+    ctx.restore();
+  }
+}
+function spawnCafeOrder(index) {
+  if (cafeOrders[index]) return;
+  const available = cafeMenu.filter(
+    (item) =>
+      !cafeOrders.some((order) => order && order.items.includes(item.id)),
+  );
+  const pool = available.length ? available : cafeMenu;
+  const choices = shuffled(pool),
+    count = Math.min(pool.length, Math.random() < 0.62 ? 1 : 2),
+    orderNumber = ++cafeOrdersCreated;
+  cafeOrders[index] = {
+    items: choices.slice(0, count).map((item) => item.id),
+    patience: 78,
+    orderNumber,
+  };
+}
+function cafeInteract() {
+  if (cafeActionCooldown > 0) return;
+  cafeActionCooldown = 0.24;
+  let station = null,
+    stationDist = 1e9;
+  for (const item of cafeMenu) {
+    const d = Math.hypot(player.x - item.x, player.y - 650);
+    if (d < stationDist) {
+      station = item;
+      stationDist = d;
+    }
+  }
+  let table = -1,
+    tableDist = 1e9;
+  for (let i = 0; i < cafeTables.length; i++) {
+    const p = cafeTables[i],
+      d = Math.hypot(player.x - p.x, player.y - p.y);
+    if (d < tableDist) {
+      table = i;
+      tableDist = d;
+    }
+  }
+  if (!heldDish) {
+    if (station && stationDist < 92) {
+      heldDish = station.id;
+      showToast(`ВЗЯТО: ${station.name.toUpperCase()} · НЕСИ ДО СТОЛИКА`);
+      tone(480, 0.08, "triangle", 0.035, 90);
+    } else showToast("ПІДІЙДИ ДО КУХОННОЇ СТАНЦІЇ");
+    return;
+  }
+  if (station && stationDist < 92) {
+    const dish = cafeMenu.find((item) => item.id === heldDish);
+    heldDish = null;
+    showToast(`${dish.name.toUpperCase()} ПОВЕРНУТО НА КУХНЮ`);
+    return;
+  }
+  if (table >= 0 && tableDist < 92) {
+    const order = cafeOrders[table];
+    if (!order) {
+      showToast(
+        "ЗА ЦИМ СТОЛИКОМ ПОКИ НЕМАЄ ЗАМОВЛЕННЯ · СТРАВА ЛИШАЄТЬСЯ У ТЕБЕ",
+      );
+      return;
+    }
+    const index = order.items.indexOf(heldDish);
+    if (index < 0) {
+      const wanted = order.items
+        .map((id) => cafeMenu.find((item) => item.id === id)?.name)
+        .filter(Boolean)
+        .join(" + ");
+      showToast(`ЦЬОМУ СТОЛИКУ ПОТРІБНО: ${wanted} · СТРАВА ЛИШАЄТЬСЯ У ТЕБЕ`);
+      return;
+    }
+    order.items.splice(index, 1);
+    heldDish = null;
+    score += 100;
+    chime();
+    if (order.items.length === 0) {
+      cafeServed++;
+      score += 200 + Math.round(order.patience * 2);
+      cafeOrders[table] = null;
+      document.getElementById("delivered").textContent = `${cafeServed} / 10`;
+      showToast(`СТОЛИК ${table + 1} ОБСЛУЖЕНО! · ${cafeServed} / 10`);
+      if (cafeServed >= 10) {
+        finish(true);
+        return;
+      }
+      spawnCafeOrder(table);
+    } else showToast(`СМАЧНО! ЩЕ ${order.items.length} ПОЗИЦІЯ У ЗАМОВЛЕННІ`);
+    return;
+  }
+  const dish = cafeMenu.find((item) => item.id === heldDish);
+  showToast(`НЕСИ ${dish.name.toUpperCase()} ДО ПОТРІБНОГО СТОЛИКА`);
+}
+function updateCafe(dt) {
+  const { x: dx, y: dy } = movementAxes();
+  const baseSpeed = 405,
+    targetVx = dx * baseSpeed,
+    targetVy = dy * baseSpeed,
+    responsiveness = dx || dy ? 19 : 22;
+  player.vx += (targetVx - player.vx) * Math.min(1, dt * responsiveness);
+  player.vy += (targetVy - player.vy) * Math.min(1, dt * responsiveness);
+  if (dx || dy) player.dir = Math.atan2(player.vy, player.vx);
+  if (boostPressed) {
+    boostPressed = false;
+    if (player.boostCd <= 0) {
+      player.boost = 0.5;
+      player.boostCd = 2;
+      const n = Math.hypot(player.vx, player.vy) || 1;
+      player.vx += (player.vx / n) * 265;
+      player.vy += (player.vy / n) * 265;
+      tone(290, 0.1, "sawtooth", 0.025, 210);
+    }
+  }
+  player.boostCd = Math.max(0, player.boostCd - dt);
+  player.boost = Math.max(0, player.boost - dt);
+  const max = player.boost > 0 ? 500 : baseSpeed,
+    sp = Math.hypot(player.vx, player.vy);
+  if (sp > max) {
+    player.vx = (player.vx / sp) * max;
+    player.vy = (player.vy / sp) * max;
+  }
+  const blocked = (x, y) =>
+    cafeTables.some((p) => {
+      const ox = (x - p.x) / 84,
+        oy = (y - p.y) / 58;
+      return ox * ox + oy * oy < 1;
+    });
+  const nextX = clamp(player.x + player.vx * dt, 70, W - 70),
+    nextY = clamp(player.y + player.vy * dt, 145, 730);
+  if (!blocked(nextX, player.y)) player.x = nextX;
+  else player.vx = 0;
+  if (!blocked(player.x, nextY)) player.y = nextY;
+  else player.vy = 0;
+  cafeActionCooldown = Math.max(0, cafeActionCooldown - dt);
+  for (let i = 0; i < cafeOrders.length; i++) {
+    const order = cafeOrders[i];
+    if (!order) continue;
+    order.patience = Math.max(0, order.patience - dt);
+    if (order.patience <= 0) {
+      cafeOrders[i] = null;
+      score = Math.max(0, score - 60);
+      spawnCafeOrder(i);
+      showToast(`СТОЛИК ${i + 1} ВТРАТИВ ТЕРПІННЯ · НОВЕ ЗАМОВЛЕННЯ`);
+      tone(155, 0.12, "square", 0.02, -45);
+    }
+  }
+  if (interactPressed) {
+    interactPressed = false;
+    cafeInteract();
+  }
+  document.getElementById("delivered").textContent = `${cafeServed} / 10`;
+  document.getElementById("score").textContent = String(score).padStart(4, "0");
+  document.getElementById("timer").textContent = formatTime(time);
+  if (toastTimer > 0) {
+    toastTimer -= dt;
+    if (toastTimer <= 0)
+      document.getElementById("toast").classList.remove("show");
+  }
+}
+function drawFoodIcon(c, id, x, y, size) {
+  c.save();
+  c.translate(x, y);
+  c.scale(size / 40, size / 40);
+  c.lineJoin = "round";
+  if (id === "syrnyky") {
+    for (const [dx, dy, r] of [
+      [-10, 3, 10],
+      [9, 2, 10],
+      [0, -8, 10],
+    ]) {
+      c.fillStyle = "#9c5b2c";
+      c.beginPath();
+      c.arc(dx, dy, r + 1, 0, Math.PI * 2);
+      c.fill();
+      c.fillStyle = "#f1bd61";
+      c.beginPath();
+      c.arc(dx, dy, r, 0, Math.PI * 2);
+      c.fill();
+      c.fillStyle = "#ffdf91";
+      c.beginPath();
+      c.arc(dx - 2, dy - 2, r * 0.55, 0, Math.PI * 2);
+      c.fill();
+      c.fillStyle = "#fff1c6";
+      c.beginPath();
+      c.arc(dx + 2, dy + 2, 1.5, 0, Math.PI * 2);
+      c.fill();
+    }
+  } else if (id === "pizza") {
+    c.fillStyle = "#9a492f";
+    c.beginPath();
+    c.roundRect(-18, -18, 36, 36, 3);
+    c.fill();
+    c.fillStyle = "#e8a743";
+    c.beginPath();
+    c.roundRect(-15, -15, 30, 30, 2);
+    c.fill();
+    c.fillStyle = "#cf493a";
+    c.beginPath();
+    c.roundRect(-11, -11, 22, 22, 2);
+    c.fill();
+    c.fillStyle = "#f2cb68";
+    c.beginPath();
+    c.roundRect(-8, -8, 16, 16, 2);
+    c.fill();
+    for (const [dx, dy] of [
+      [-5, -4],
+      [4, -5],
+      [-4, 5],
+      [5, 4],
+    ]) {
+      c.fillStyle = "#a9443b";
+      c.beginPath();
+      c.arc(dx, dy, 2.5, 0, Math.PI * 2);
+      c.fill();
+    }
+    c.fillStyle = "#5c914e";
+    c.beginPath();
+    c.ellipse(0, 0, 2, 4, 0.7, 0, Math.PI * 2);
+    c.fill();
+  } else if (id === "condensed") {
+    c.fillStyle = "#f4f3df";
+    c.beginPath();
+    c.roundRect(-14, -15, 28, 30, 5);
+    c.fill();
+    c.fillStyle = "#278cae";
+    c.beginPath();
+    c.roundRect(-13, -8, 26, 17, 3);
+    c.fill();
+    c.fillStyle = "#f2cd5e";
+    c.fillRect(-13, -12, 26, 4);
+    c.fillStyle = "#fff";
+    c.font = "bold 5px Arial,sans-serif";
+    c.textAlign = "center";
+    c.fillText("КУП’ЯНСЬКЕ", 0, 0);
+    c.fillStyle = "#bc4b7b";
+    c.beginPath();
+    c.ellipse(0, 7, 7, 5, 0, 0, Math.PI * 2);
+    c.fill();
+    c.fillStyle = "#f6e8dc";
+    c.beginPath();
+    c.arc(0, 5, 3.5, 0, Math.PI * 2);
+    c.fill();
+    c.beginPath();
+    c.ellipse(-2, 1, 1.3, 4, -0.2, 0, Math.PI * 2);
+    c.ellipse(2, 1, 1.3, 4, 0.2, 0, Math.PI * 2);
+    c.fill();
+    c.fillStyle = "#4a3840";
+    c.fillRect(-1, 5, 1, 1);
+    c.fillRect(2, 5, 1, 1);
+  } else if (id === "sandwich") {
+    c.fillStyle = "#9b5b34";
+    c.beginPath();
+    c.moveTo(-18, 8);
+    c.lineTo(-12, -8);
+    c.quadraticCurveTo(0, -20, 12, -8);
+    c.lineTo(18, 8);
+    c.closePath();
+    c.fill();
+    c.fillStyle = "#f0d18b";
+    c.fillRect(-16, 5, 32, 5);
+    c.fillStyle = "#8d4431";
+    c.fillRect(-14, -2, 28, 8);
+    c.fillStyle = "#65a65e";
+    c.fillRect(-13, -6, 26, 4);
+  } else if (id === "pelmeni") {
+    if (ermolinoLogo.complete && ermolinoLogo.naturalWidth) {
+      c.fillStyle = "#fff";
+      c.beginPath();
+      c.arc(0, 0, 19, 0, Math.PI * 2);
+      c.fill();
+      const pad = 2;
+      c.drawImage(ermolinoLogo, -20 + pad, -20 + pad, 36, 36);
+    } else {
+      c.fillStyle = "#fff";
+      c.font = "bold 7px Arial,sans-serif";
+      c.textAlign = "center";
+      c.textBaseline = "middle";
+      c.fillText("ЄРМОЛІНО", 0, 0);
+    }
+  }
+  c.restore();
+}
+function drawVrGuest(p, i, t, o = null) {
+  const shirts = [
+      "#6f84bd",
+      "#cb745a",
+      "#779b75",
+      "#b37ca1",
+      "#4f9a9b",
+      "#b28c51",
+    ],
+    skin = ["#efc795", "#dca878", "#f1d1aa", "#c99068", "#e8ba8c", "#d7a174"],
+    hair = ["#322d36", "#74513b", "#222934", "#aa7647", "#5c3f34", "#c5ae76"],
+    x = p.x,
+    y = p.y,
+    angry = o && o.patience < 25,
+    pulse = 1 + Math.sin(t * 2 + i) * 0.025,
+    gesture = angry ? Math.sin(t * 12 + i) * 10 : Math.sin(t * 2 + i) * 3,
+    turn = Math.sign(player.x - x) * 3,
+    c = ctx;
+  c.save();
+  c.fillStyle = "#25343f";
+  c.beginPath();
+  c.ellipse(x, y + 62, 31, 19, 0, 0, Math.PI * 2);
+  c.fill();
+  c.fillStyle = shirts[i % shirts.length];
+  c.beginPath();
+  c.ellipse(x + Math.sin(t * 1.4 + i) * 2, y + 52, 22, 29, 0, 0, Math.PI * 2);
+  c.fill();
+  c.strokeStyle = shirts[i % shirts.length];
+  c.lineWidth = 9;
+  c.lineCap = "round";
+  c.beginPath();
+  c.moveTo(x - 15, y + 43);
+  c.lineTo(x - 28, y + 28);
+  c.moveTo(x + 15, y + 43);
+  c.lineTo(x + 29, y + 25 + gesture);
+  c.stroke();
+  for (const side of [-1, 1]) {
+    c.fillStyle = "#203542";
+    rounded(c, x + side * 30 - 7, y + 19, 14, 18, 5);
+    c.fillStyle = "#53dedb";
+    c.beginPath();
+    c.arc(x + side * 30, y + 28, 3, 0, Math.PI * 2);
+    c.fill();
+  }
+  c.fillStyle = skin[i % skin.length];
+  c.beginPath();
+  c.arc(x + turn, y + 27, 18 * pulse, 0, Math.PI * 2);
+  c.fill();
+  c.fillStyle = hair[i % hair.length];
+  c.beginPath();
+  c.arc(x + turn, y + 23, 18, Math.PI, Math.PI * 2);
+  c.fill();
+  c.fillStyle = "#172832";
+  rounded(c, x - 25, y + 17, 50, 22, 8);
+  c.fill();
+  c.strokeStyle = "#526d77";
+  c.lineWidth = 2;
+  c.beginPath();
+  c.arc(x, y + 23, 25, Math.PI, Math.PI * 2);
+  c.stroke();
+  c.fillStyle = angry ? "#f48574" : "#27b8c2";
+  rounded(c, x - 19, y + 20, 17, 14, 5);
+  rounded(c, x + 2, y + 20, 17, 14, 5);
+  c.fillStyle = "#bafffa";
+  c.beginPath();
+  c.arc(x - 10.5, y + 27, 4, 0, Math.PI * 2);
+  c.arc(x + 10.5, y + 27, 4, 0, Math.PI * 2);
+  c.fill();
+  c.fillStyle = "#152631";
+  c.beginPath();
+  c.arc(x, y + 27, 2.5, 0, Math.PI * 2);
+  c.fill();
+  c.fillStyle = "#d5ffff";
+  c.font = "bold 7px Arial,sans-serif";
+  c.textAlign = "center";
+  c.fillText("VR", x, y + 16);
+  if (angry) {
+    c.fillStyle = "#fff4db";
+    rounded(c, x - 23, y - 14, 46, 20, 8);
+    c.fillStyle = "#c14d4c";
+    c.font = "bold 14px Arial";
+    c.fillText("…", x, y + 1);
+  }
+  c.restore();
+}
+function drawCafeAvatar(t) {
+  ctx.save();
+  ctx.translate(player.x, player.y);
+  ctx.rotate(player.dir + Math.PI / 2);
+  ctx.fillStyle = "#0006";
+  ctx.beginPath();
+  ctx.ellipse(3, 12, 26, 16, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#283c4b";
+  ctx.beginPath();
+  ctx.ellipse(0, 3, 14, 23, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#49cbb8";
+  rounded(ctx, -13, -12, 26, 23, 8);
+  ctx.fillStyle = "#f7c993";
+  ctx.beginPath();
+  ctx.arc(0, -18, 9, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#3b2c2a";
+  ctx.beginPath();
+  ctx.arc(0, -21, 9, Math.PI, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#f0d9aa";
+  rounded(ctx, -10, 3, 20, 7, 3);
+  ctx.restore();
+  if (heldDish) {
+    ctx.fillStyle = "#fff";
+    ctx.beginPath();
+    ctx.arc(player.x + 23, player.y - 30, 23, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "#38505a";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    drawFoodIcon(ctx, heldDish, player.x + 23, player.y - 30, 34);
+  }
+}
+function drawCafe(t) {
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = "#a98866";
+  ctx.fillRect(0, 0, W, H);
+  for (let y = 0; y < H; y += 64)
+    for (let x = 0; x < W; x += 64) {
+      ctx.fillStyle = (x / 64 + y / 64) % 2 === 0 ? "#e2d2b2" : "#d4c19e";
+      ctx.fillRect(x, y, 62, 62);
+    }
+  ctx.fillStyle = "#293c48";
+  ctx.fillRect(0, 0, W, 136);
+  ctx.fillStyle = "#172a35";
+  ctx.fillRect(0, 132, W, 15);
+  ctx.fillStyle = "#f7e6c4";
+  ctx.font = "900 29px Arial,sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "alphabetic";
+  ctx.fillText("VR-КАФЕ «СМІЛА»", W / 2, 61);
+  ctx.font = "bold 14px Arial,sans-serif";
+  ctx.fillStyle = "#72f0dc";
+  ctx.fillText("ЗАМОВЛЕННЯ Є. РЕАЛЬНІСТЬ — ЗА БАЖАННЯМ.", W / 2, 92);
+  ctx.fillStyle = "#f4cb7a";
+  ctx.font = "bold 12px Arial,sans-serif";
+  ctx.fillText("ГОСТІ У VR · КУХНЯ ПРАЦЮЄ НАСПРАВДІ", W / 2, 118);
+  for (let x = 70; x < 250; x += 90) {
+    ctx.fillStyle = "#68a4b0";
+    rounded(ctx, x, 30, 66, 75, 8);
+    ctx.fillStyle = "#d8eee2";
+    ctx.fillRect(x + 7, 38, 52, 4);
+    ctx.fillStyle = "#34464c";
+    ctx.fillRect(x + 31, 30, 4, 75);
+  }
+  for (let i = 0; i < cafeTables.length; i++) {
+    const p = cafeTables[i],
+      o = cafeOrders[i];
+    ctx.fillStyle = "#34464d";
+    for (const [dx, dy] of [
+      [-63, -33],
+      [63, -33],
+      [-63, 33],
+      [63, 33],
+    ]) {
+      ctx.beginPath();
+      ctx.arc(p.x + dx, p.y + dy, 14, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.fillStyle = "#0004";
+    ctx.beginPath();
+    ctx.ellipse(p.x + 4, p.y + 9, 83, 57, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#714a36";
+    ctx.beginPath();
+    ctx.ellipse(p.x, p.y + 1, 80, 54, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#bd8a60";
+    ctx.beginPath();
+    ctx.ellipse(p.x, p.y - 4, 76, 49, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "#eed0a1";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.ellipse(p.x, p.y - 4, 67, 41, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.fillStyle = "#f1d7a6";
+    ctx.font = "bold 14px Arial,sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText(`СТІЛ ${i + 1}`, p.x, p.y + 1);
+    drawVrGuest(p, i, t, o);
+    if (o) {
+      const by = p.y - 127;
+      ctx.fillStyle = "#152732";
+      rounded(ctx, p.x - 94, by - 3, 188, 100, 11);
+      ctx.fillStyle = "#fffdf5";
+      rounded(ctx, p.x - 90, by, 180, 94, 8);
+      ctx.fillStyle = "#223641";
+      ctx.font = "bold 15px Arial,sans-serif";
+      ctx.fillText(`ЗАМОВЛЕННЯ №${o.orderNumber}`, p.x, by + 17);
+      o.items.forEach((id, j) => {
+        const x = p.x + (j - (o.items.length - 1) / 2) * 78;
+        drawFoodIcon(ctx, id, x, by + 40, 28);
+        ctx.fillStyle = "#182b33";
+        ctx.font = "bold 12px Arial,sans-serif";
+        const label =
+          id === "pelmeni"
+            ? "Пельмені Єрмоліно"
+            : cafeMenu.find((m) => m.id === id).name;
+        if (label === "Куп’янська згущонка") {
+          ctx.fillText("Куп’янська", x, by + 59);
+          ctx.fillText("згущонка", x, by + 72);
+        } else if (label === "Бутерброд зі свининою") {
+          ctx.fillText("Бутерброд", x, by + 59);
+          ctx.fillText("зі свининою", x, by + 72);
+        } else if (label === "Квадратна піца") {
+          ctx.fillText("Квадратна", x, by + 59);
+          ctx.fillText("піца", x, by + 72);
+        } else if (label === "Пельмені Єрмоліно") {
+          ctx.fillText("Пельмені", x, by + 59);
+          ctx.fillText("Єрмоліно", x, by + 72);
+        } else ctx.fillText(label, x, by + 65);
+      });
+      ctx.fillStyle = "#d7ded8";
+      rounded(ctx, p.x - 63, by + 86, 126, 6, 3);
+      ctx.fillStyle = o.patience > 30 ? "#28a978" : "#d94141";
+      rounded(ctx, p.x - 63, by + 86, (126 * o.patience) / 78, 6, 3);
+    }
+  }
+  if (heldDish) {
+    let target = -1,
+      dist = 1e9;
+    for (let i = 0; i < cafeOrders.length; i++) {
+      const order = cafeOrders[i];
+      if (order?.items.includes(heldDish)) {
+        const p = cafeTables[i],
+          d = Math.hypot(player.x - p.x, player.y - p.y);
+        if (d < dist) {
+          target = i;
+          dist = d;
+        }
+      }
+    }
+    if (target >= 0) {
+      const p = cafeTables[target];
+      ctx.save();
+      ctx.strokeStyle = "#5af0d4";
+      ctx.lineWidth = 4;
+      ctx.setLineDash([9, 6]);
+      ctx.beginPath();
+      ctx.ellipse(p.x, p.y - 4, 91, 63, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = "#071a19e8";
+      rounded(ctx, p.x - 72, p.y - 93, 144, 24, 6);
+      ctx.fillStyle = "#9bf9df";
+      ctx.font = "bold 11px Arial";
+      ctx.textAlign = "center";
+      ctx.fillText("ЦЕЙ СТОЛИК ЧЕКАЄ", p.x, p.y - 77);
+      ctx.restore();
+    }
+  }
+  ctx.fillStyle = "#243942";
+  rounded(ctx, 62, 610, 1156, 119, 17);
+  ctx.fillStyle = "#76543d";
+  rounded(ctx, 70, 617, 1140, 104, 14);
+  for (const s of cafeMenu) {
+    const nearStation = Math.hypot(player.x - s.x, player.y - 650) < 94;
+    ctx.fillStyle = nearStation ? "#fff0be" : "#f3e4cc";
+    rounded(ctx, s.x - 78, 623, 156, 90, 12);
+    ctx.fillStyle = s.c;
+    rounded(ctx, s.x - 73, 628, 146, 80, 9);
+    ctx.fillStyle = "#fff";
+    ctx.beginPath();
+    ctx.arc(s.x, 642, 23, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "#263b42";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    drawFoodIcon(ctx, s.id, s.x, 642, s.id === "pelmeni" ? 48 : 38);
+    ctx.fillStyle = "#fff";
+    ctx.font = "bold 12px Arial,sans-serif";
+    ctx.textAlign = "center";
+    if (s.id === "pelmeni") {
+      ctx.fillText("ЄРМОЛІНО", s.x, 685);
+    } else if (s.id === "condensed") {
+      ctx.font = "bold 10px Arial,sans-serif";
+      ctx.fillText("КУП’ЯНСЬКА", s.x, 673);
+      ctx.fillText("ЗГУЩОНКА", s.x, 685);
+    } else if (s.id === "sandwich") {
+      ctx.font = "bold 10px Arial,sans-serif";
+      ctx.fillText("БУТЕРБРОД", s.x, 673);
+      ctx.fillText("ЗІ СВИНИНОЮ", s.x, 685);
+    } else ctx.fillText(s.name, s.x, 685);
+    ctx.fillStyle = "#182b33";
+    rounded(ctx, s.x - 48, 690, 96, 20, 6);
+    ctx.fillStyle = "#fff";
+    ctx.font = "bold 12px Arial,sans-serif";
+    ctx.fillText(heldDish ? "E · ПОВЕРНУТИ" : "E · ВЗЯТИ", s.x, 704);
+  }
+  ctx.fillStyle = "#233740";
+  ctx.fillRect(0, 740, W, 60);
+  ctx.fillStyle = "#fff3da";
+  ctx.font = "bold 15px Arial,sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText("", W / 2, 778);
+  drawCafeAvatar(t);
+}
+function drawCafeDestination(t) {
+  const x = cafeDestination.x,
+    y = cafeDestination.y,
+    pulse = 1 + Math.sin(t * 4) * 0.1;
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.fillStyle = "#39edb733";
+  ctx.beginPath();
+  ctx.arc(0, 0, 88 * pulse, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = "#39edb7";
+  ctx.lineWidth = 5;
+  ctx.beginPath();
+  ctx.arc(0, 0, 60 * pulse, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.fillStyle = "#172a35";
+  rounded(ctx, -61, -44, 122, 78, 10);
+  ctx.fillStyle = "#58d4b7";
+  rounded(ctx, -54, -37, 108, 64, 7);
+  ctx.fillStyle = "#fff6d7";
+  ctx.fillRect(-39, -22, 78, 4);
+  ctx.fillStyle = "#172a35";
+  ctx.font = "900 21px Arial,sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText("VR", 0, 3);
+  ctx.font = "bold 13px Arial,sans-serif";
+  ctx.fillText("КАФЕ", 0, 21);
+  ctx.fillStyle = "#fff";
+  rounded(ctx, -92, -81, 184, 25, 8);
+  ctx.fillStyle = "#13232c";
+  ctx.font = "bold 13px Arial,sans-serif";
+  ctx.fillText("НА ЗМІНУ →", 0, -64);
+  ctx.restore();
+}
+function drawNeonCity(t) {
+  const minX = buildingBackdrop ? 0 : player.x - W * 0.65,
+    maxX = buildingBackdrop ? world.w : player.x + W * 0.65,
+    minY = buildingBackdrop ? 0 : player.y - H * 0.65,
+    maxY = buildingBackdrop ? world.h : player.y + H * 0.65;
+  ctx.save();
+  for (const x of roadsX) {
+    if (x < minX || x > maxX) continue;
+    for (const y of roadsY) {
+      if (y < minY || y > maxY) continue;
+      const lx = x + roadW / 2 - 36,
+        ly = y + roadW / 2 - 42;
+      ctx.strokeStyle = "#44484a";
+      ctx.lineWidth = 5;
+      ctx.beginPath();
+      ctx.moveTo(lx, ly + 20);
+      ctx.lineTo(lx, ly - 42);
+      ctx.lineTo(lx - 21, ly - 52);
+      ctx.stroke();
+      ctx.fillStyle = "#f6d28b";
+      rounded(ctx, lx - 29, ly - 57, 20, 9, 4);
+    }
+  }
+  ctx.restore();
+  for (let i = 0; i < 18; i++) {
+    const x = 160 + ((i * 173) % world.w),
+      y = 120 + ((i * 277) % world.h);
+    if (
+      x < minX ||
+      x > maxX ||
+      y < minY ||
+      y > maxY ||
+      roadsX.some((r) => Math.abs(x - r) < roadW * 0.8) ||
+      roadsY.some((r) => Math.abs(y - r) < roadW * 0.8)
+    )
+      continue;
+    ctx.fillStyle = "#18212b";
+    rounded(ctx, x - 38, y - 24, 76, 48, 4);
+    for (let wx = -25; wx <= 20; wx += 22)
+      for (let wy = -12; wy <= 8; wy += 20) {
+        ctx.fillStyle = (i + wx + wy) % 3 === 0 ? "#f0c77a" : "#43505a";
+        ctx.fillRect(x + wx, y + wy, 9, 8);
+      }
+  }
+}
+function buildChaseBackdrop() {
+  if (chaseBackdrop) return;
+  const back = document.createElement("canvas");
+  back.width = world.w;
+  back.height = world.h;
+  const screenCtx = ctx,
+    oldStage = stage;
+  try {
+    ctx = back.getContext("2d", { alpha: false });
+    stage = 3;
+    buildingBackdrop = true;
+    drawGround();
+    drawScenery(0);
+    drawDistrict();
+    drawSmilaLandmarks(0);
+    drawNeonCity(0);
+    for (const x of roadsX)
+      for (const y of roadsY) {
+        ctx.fillStyle = "#d0c1a0";
+        ctx.beginPath();
+        ctx.arc(x, y, 13, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "#6d8a69";
+        ctx.beginPath();
+        ctx.arc(x, y, 8, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    chaseBackdrop = back;
+  } catch (err) {
+    console.warn("Night city cache unavailable; using live rendering.", err);
+  } finally {
+    ctx = screenCtx;
+    stage = oldStage;
+    buildingBackdrop = false;
+  }
+}
+function drawChaseWorld(t) {
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = "#10171b";
+  ctx.fillRect(0, 0, W, H);
+  const tx = W / 2 - player.x,
+    ty = H / 2 - player.y;
+  ctx.drawImage(chaseBackdrop, tx, ty);
+  ctx.save();
+  ctx.translate(tx, ty);
+  for (const car of cars)
+    if (
+      car.x > player.x - W * 0.65 &&
+      car.x < player.x + W * 0.65 &&
+      car.y > player.y - H * 0.65 &&
+      car.y < player.y + H * 0.65
+    )
+      drawCar(car, t);
+  for (const pedestrian of pedestrians)
+    if (
+      pedestrian.x > player.x - W * 0.65 &&
+      pedestrian.x < player.x + W * 0.65 &&
+      pedestrian.y > player.y - H * 0.65 &&
+      pedestrian.y < player.y + H * 0.65
+    )
+      drawPedestrian(pedestrian, t);
+  deliveries.forEach((d, i) => drawDelivery(d, i, t));
+  if (courierToCafe) drawCafeDestination(t);
+  if (chaseMarkerActive) drawSafeMarker(t);
+  drawChaseVan(t);
+  drawPlayer(t);
+  ctx.restore();
+  drawNightOverlay(t);
+}
+function drawNightOverlay(t) {
+  const draw = drawNightOverlay;
+  let sprite = draw.glow;
+  if (!sprite) {
+    sprite = document.createElement("canvas");
+    sprite.width = 160;
+    sprite.height = 160;
+    const gctx = sprite.getContext("2d"),
+      g = gctx.createRadialGradient(80, 80, 2, 80, 80, 78);
+    g.addColorStop(0, "rgba(255,209,132,.28)");
+    g.addColorStop(0.38, "rgba(255,197,115,.12)");
+    g.addColorStop(1, "rgba(255,185,90,0)");
+    gctx.fillStyle = g;
+    gctx.fillRect(0, 0, 160, 160);
+    draw.glow = sprite;
+  }
+  ctx.save();
+  ctx.globalCompositeOperation = "screen";
+  for (const x of roadsX) {
+    const sx = W / 2 + x - player.x + roadW / 2;
+    if (sx < -100 || sx > W + 100) continue;
+    for (const y of roadsY) {
+      const sy = H / 2 + y - player.y + roadW / 2;
+      if (sy < -100 || sy > H + 100) continue;
+      ctx.drawImage(
+        sprite,
+        sx - roadW * 0.18 - 80,
+        sy - roadW * 0.18 - 80,
+        160,
+        160,
+      );
+      ctx.drawImage(
+        sprite,
+        sx + roadW * 0.18 - 80,
+        sy + roadW * 0.18 - 80,
+        160,
+        160,
+      );
+    }
+  }
+  const vx = W / 2 + chaseVan.x - player.x,
+    vy = H / 2 + chaseVan.y - player.y;
+  ctx.drawImage(sprite, vx - 80, vy - 80, 160, 160);
+  ctx.restore();
+}
+function drawSafeMarker(t) {
+  const x = chaseDestination.x,
+    y = chaseDestination.y,
+    p = 1 + Math.sin(t * 5) * 0.12;
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.fillStyle = "#55e7b933";
+  ctx.beginPath();
+  ctx.arc(0, 0, 88 * p, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = "#54edb8";
+  ctx.lineWidth = 5;
+  ctx.beginPath();
+  ctx.arc(0, 0, 60 * p, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.fillStyle = "#0d2927";
+  rounded(ctx, -92, -54, 184, 91, 12);
+  ctx.fillStyle = "#5be4b2";
+  rounded(ctx, -85, -47, 170, 77, 9);
+  ctx.fillStyle = "#12302c";
+  ctx.font = "900 19px Arial,sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText("БЕЗПЕЧНЕ", 0, -14);
+  ctx.fillText("МІСЦЕ", 0, 10);
+  ctx.font = "bold 11px Arial,sans-serif";
+  ctx.fillText("МАРШРУТ ВІДКРИТО", 0, 28);
+  ctx.restore();
+}
+function drawChaseVan(t) {
+  ctx.save();
+  ctx.translate(chaseVan.x, chaseVan.y + Math.sin(t * 8) * 1.5);
+  ctx.rotate(Math.atan2(chaseVan.vy, chaseVan.vx) + Math.PI / 2);
+  ctx.scale(0.76, 0.76);
+  ctx.fillStyle = "#0007";
+  rounded(ctx, -40, -65, 80, 132, 18);
+  ctx.fillStyle = "#465142";
+  rounded(ctx, -38, -67, 76, 132, 17);
+  ctx.fillStyle = "#65704f";
+  rounded(ctx, -32, -60, 64, 114, 13);
+  ctx.fillStyle = "#17232a";
+  rounded(ctx, -27, -46, 54, 35, 8);
+  ctx.fillStyle = "#a9d7ce";
+  rounded(ctx, -22, -41, 44, 24, 5);
+  ctx.fillStyle = "#25302c";
+  rounded(ctx, -26, 2, 52, 37, 8);
+  ctx.fillStyle = "#b9c2ad";
+  ctx.font = "900 16px Arial,sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText("ТЦК", 0, 23);
+  ctx.fillStyle = "#f6df8a";
+  ctx.fillRect(-29, -65, 14, 5);
+  ctx.fillRect(15, -65, 14, 5);
+  ctx.fillStyle = "#fff2c1";
+  ctx.fillRect(-28, -61, 12, 3);
+  ctx.fillRect(16, -61, 12, 3);
+  ctx.fillStyle = "#171d22";
+  rounded(ctx, -43, -43, 7, 29, 3);
+  rounded(ctx, 36, -43, 7, 29, 3);
+  rounded(ctx, -43, 33, 7, 29, 3);
+  rounded(ctx, 36, 33, 7, 29, 3);
+  ctx.restore();
+}
+
+
+/* Source: js/06-training.js */
+function drawTrainingStage(t) {
+  if (trainingPhase === "field") {
+    drawCornfield(t);
+    return;
+  }
+  if (trainingPhase === "escape") {
+    drawEscapeTransition(t);
+    return;
+  }
+  ctx.clearRect(0, 0, W, H);
+  const bg = ctx.createLinearGradient(0, 0, 0, H);
+  bg.addColorStop(0, "#cbd0b9");
+  bg.addColorStop(0.5, "#aeb7a2");
+  bg.addColorStop(1, "#828f7e");
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+  for (let y = 128; y < H; y += 48)
+    for (let x = 16; x < W; x += 48) {
+      ctx.fillStyle = (x / 48 + y / 48) % 2 ? "#c7c6ad" : "#b7bea8";
+      ctx.fillRect(x, y, 45, 45);
+    }
+  ctx.fillStyle = "#46504b";
+  ctx.fillRect(20, 118, W - 40, 14);
+  ctx.fillRect(20, H - 18, W - 40, 14);
+  ctx.fillRect(20, 118, 14, H - 136);
+  ctx.fillRect(W - 34, 118, 14, H - 136);
+  ctx.fillStyle = "#66766e";
+  rounded(ctx, 92, 500, 240, 115, 12);
+  ctx.fillStyle = "#dce5d9";
+  rounded(ctx, 112, 520, 200, 63, 18);
+  ctx.fillStyle = "#9fb4a6";
+  ctx.beginPath();
+  ctx.ellipse(210, 551, 49, 19, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = "#6f8278";
+  ctx.lineWidth = 5;
+  ctx.beginPath();
+  ctx.moveTo(210, 516);
+  ctx.lineTo(210, 535);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(211, 519, 12, Math.PI, Math.PI * 2);
+  ctx.stroke();
+  ctx.fillStyle = "#35423c";
+  ctx.fillRect(112, 592, 200, 8);
+  ctx.fillStyle = "#eee2c1";
+  ctx.font = "bold 11px Arial";
+  ctx.textAlign = "center";
+  ctx.fillText("РАКОВИНА", 212, 632);
+  for (let i = 0; i < toiletStalls.length; i++) {
+    const q = toiletStalls[i],
+      x = q.x;
+    ctx.fillStyle = "#61716c";
+    ctx.fillRect(x - 112, 235, 8, 166);
+    ctx.fillRect(x + 104, 235, 8, 166);
+    ctx.fillStyle = "#89998c";
+    ctx.fillRect(x - 108, 236, 212, 7);
+    ctx.fillStyle = "#45514d";
+    rounded(ctx, x - 54, 280, 108, 98, 15);
+    ctx.fillStyle = q.occupied
+      ? "#b9a477"
+      : q.progress >= 0.995
+        ? "#e5e9d8"
+        : "#ddd3b8";
+    ctx.beginPath();
+    ctx.ellipse(x, 332, 38, 28, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = q.occupied
+      ? "#82907d"
+      : q.progress >= 0.995
+        ? "#a6d9b6"
+        : "#8c7353";
+    ctx.beginPath();
+    ctx.ellipse(x, 332, 23, 15, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#596a64";
+    rounded(ctx, x - 26, 291, 52, 15, 6);
+    ctx.fillStyle = "#182322";
+    rounded(ctx, x - 62, 255, 124, 22, 6);
+    ctx.fillStyle = q.occupied
+      ? "#f3d37e"
+      : q.progress >= 0.995
+        ? "#9ce0b9"
+        : "#e4ac76";
+    ctx.font = "bold 11px Arial";
+    ctx.textAlign = "center";
+    ctx.fillText(
+      q.occupied ? "ЗАЙНЯТО" : q.progress >= 0.995 ? "ЧИСТО" : "БРУДНО",
+      x,
+      270,
+    );
+    ctx.fillStyle = "#293431";
+    rounded(ctx, x - 48, 373, 96, 9, 4);
+    ctx.fillStyle = q.progress >= 0.995 ? "#55c49a" : "#d79463";
+    rounded(ctx, x - 46, 375, 92 * q.progress, 5, 3);
+    if (q.mess) {
+      ctx.fillStyle = "#9b7048";
+      ctx.beginPath();
+      ctx.ellipse(x, 319, 14, 6, 0, 0, Math.PI * 2);
+      ctx.arc(x - 7, 314, 6, 0, Math.PI * 2);
+      ctx.arc(x + 3, 310, 7, 0, Math.PI * 2);
+      ctx.arc(x + 9, 316, 5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#fff0d1";
+      ctx.beginPath();
+      ctx.arc(x - 3, 311, 1.5, 0, Math.PI * 2);
+      ctx.arc(x + 4, 311, 1.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  ctx.fillStyle = "#25312e";
+  rounded(ctx, 1100, 120, 105, 14, 5);
+  ctx.fillStyle = "#55655e";
+  rounded(ctx, 1108, 134, 89, 59, 7);
+  ctx.fillStyle = trainingPhase === "leave" ? "#49bf91" : "#db9861";
+  ctx.beginPath();
+  ctx.arc(1180, 163, 5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#1d2925";
+  ctx.font = "bold 10px Arial";
+  ctx.textAlign = "center";
+  ctx.fillText(
+    trainingPhase === "leave" ? "ВИХІД" : "СЛУЖБОВІ ДВЕРІ",
+    1152,
+    207,
+  );
+  if (!trainingBrush) {
+    ctx.fillStyle = "#53635a";
+    rounded(ctx, toothbrush.x - 35, toothbrush.y + 20, 70, 18, 5);
+    ctx.fillStyle = "#c5b890";
+    rounded(ctx, toothbrush.x - 30, toothbrush.y + 14, 60, 8, 3);
+    ctx.fillStyle = "#e7dfc7";
+    ctx.font = "bold 9px Arial";
+    ctx.textAlign = "center";
+    ctx.fillText("ТРИМАЧ ЩІТКИ", toothbrush.x, toothbrush.y + 55);
+    ctx.save();
+    ctx.translate(toothbrush.x, toothbrush.y + Math.sin(t * 4) * 3);
+    ctx.rotate(-0.55);
+    ctx.fillStyle = "#e9c34e";
+    rounded(ctx, -7, -28, 14, 54, 6);
+    ctx.fillStyle = "#69d5c8";
+    rounded(ctx, -7, -32, 14, 12, 4);
+    ctx.fillStyle = "#fff";
+    for (let k = 0; k < 5; k++) ctx.fillRect(-5 + k * 2.5, -35, 2, 4);
+    ctx.restore();
+    ctx.fillStyle = "#162321";
+    rounded(ctx, toothbrush.x - 58, toothbrush.y - 58, 116, 22, 6);
+    ctx.fillStyle = "#fff";
+    ctx.font = "bold 10px Arial";
+    ctx.textAlign = "center";
+    ctx.fillText("ЗУБНА ЩІТКА · E", toothbrush.x, toothbrush.y - 43);
+  }
+  if (
+    trainingBrush &&
+    (trainingPhase === "brush_teeth" || trainingPhase === "clean")
+  ) {
+    ctx.save();
+    ctx.translate(player.x + 18, player.y - 12);
+    ctx.rotate(-0.72);
+    ctx.fillStyle = "#e9c34e";
+    rounded(ctx, -4, -18, 8, 36, 4);
+    ctx.fillStyle = "#69d5c8";
+    rounded(ctx, -5, -22, 10, 7, 3);
+    ctx.fillStyle = "#fff";
+    for (let k = 0; k < 4; k++) ctx.fillRect(-4 + k * 2.4, -25, 2, 4);
+    ctx.restore();
+  }
+  if (trainingBrush && trainingPhase === "brush_teeth") {
+    ctx.fillStyle = "#effff1";
+    ctx.font = "bold 18px Arial";
+    ctx.textAlign = "center";
+    for (let k = 0; k < 6; k++) {
+      const a = t * 2 + (k * Math.PI) / 3;
+      ctx.fillText(
+        "✦",
+        player.x + Math.cos(a) * 27,
+        player.y - 34 + Math.sin(a) * 15,
+      );
+    }
+  }
+  for (const g of toiletGuests) {
+    if (g.state === "using") {
+      ctx.fillStyle = "#6f7d69";
+      rounded(ctx, g.target.x - 39, g.target.y - 73, 78, 73, 8);
+      ctx.strokeStyle = "#c6b989";
+      ctx.lineWidth = 3;
+      ctx.strokeRect(g.target.x - 39, g.target.y - 73, 78, 73);
+      ctx.fillStyle = "#e5d6ae";
+      ctx.font = "bold 9px Arial";
+      ctx.textAlign = "center";
+      ctx.fillText("ЗАЙНЯТО", g.target.x, g.target.y - 54);
+      ctx.fillStyle = "#18231f";
+      rounded(ctx, g.target.x - 28, g.target.y - 42, 56, 6, 3);
+      ctx.fillStyle = "#e3bd69";
+      rounded(
+        ctx,
+        g.target.x - 26,
+        g.target.y - 40,
+        52 * Math.max(0, g.timer / 3.7),
+        2,
+        1,
+      );
+      ctx.fillStyle = "#e9d7b0";
+      const wiggle = Math.sin(t * 13) * 3;
+      ctx.fillRect(g.target.x - 13 + wiggle, g.target.y - 8, 9, 8);
+      ctx.fillRect(g.target.x + 4 - wiggle, g.target.y - 8, 9, 8);
+    } else {
+      drawTrainingSoldier(g.x, g.y, "#71815f");
+      ctx.fillStyle = "#15221fdd";
+      rounded(ctx, g.x - 44, g.y - 53, 88, 19, 5);
+      ctx.fillStyle = "#fff";
+      ctx.font = "bold 9px Arial";
+      ctx.textAlign = "center";
+      ctx.fillText("ЗАРАЗ БУДЕ ЧЕРГА", g.x, g.y - 40);
+    }
+  }
+  drawTrainingAvatar(player.x, player.y, t);
+  ctx.fillStyle = "#101923eF";
+  rounded(ctx, 18, 14, 252, 48, 9);
+  ctx.fillStyle = "#f4e7ca";
+  ctx.font = "bold 13px Arial";
+  ctx.textAlign = "left";
+  ctx.fillText("04A · ЩІТКА → 3 КАБІНКИ", 30, 34);
+  ctx.fillStyle = "#d8e1d5";
+  ctx.font = "bold 11px Arial";
+  const cleanN = toiletStalls.filter((q) => q.progress >= 0.995).length;
+  ctx.fillText(
+    `${trainingPhase === "brush_pickup" ? "1 · ВЗЯТИ ЩІТКУ" : trainingPhase === "brush_teeth" ? "2 · ПОЧИСТИТИ ЗУБИ" : trainingPhase === "clean" ? `3 · КАБІНКИ ${cleanN}/3` : trainingPhase === "return_brush" ? "4 · ПОВЕРНУТИ ЩІТКУ" : "5 · ВИЙТИ"}  ·  ВІЗИТИ ${toiletGuestVisits}/7`,
+    30,
+    51,
+  );
+  if (
+    trainingPhase === "brush_pickup" &&
+    Math.hypot(player.x - toothbrush.x, player.y - toothbrush.y) < 125
+  )
+    drawTrainingPrompt(toothbrush.x, toothbrush.y - 38, "E · ВЗЯТИ");
+  if (
+    trainingPhase === "brush_teeth" &&
+    Math.hypot(player.x - 210, player.y - 550) < 180
+  )
+    drawTrainingPrompt(210, 485, "E · ЧИСТИТИ ЗУБИ", brushProgress);
+  if (trainingPhase === "clean") {
+    let near = null,
+      nd = 145;
+    for (const stall of toiletStalls) {
+      const d = Math.hypot(player.x - stall.x, player.y - stall.y);
+      if (d < nd) {
+        near = stall;
+        nd = d;
+      }
+    }
+    if (near)
+      drawTrainingPrompt(
+        near.x,
+        near.y - 60,
+        near.occupied ? "ЗАЙНЯТО" : "E · ЧИСТИТИ",
+        near.progress,
+      );
+  }
+  if (
+    trainingPhase === "return_brush" &&
+    Math.hypot(player.x - 210, player.y - 550) < 145
+  )
+    drawTrainingPrompt(210, 485, "E · ПОВЕРНУТИ");
+  if (
+    trainingPhase === "leave" &&
+    Math.hypot(player.x - trainingDoor.x, player.y - trainingDoor.y) < 145
+  )
+    drawTrainingPrompt(trainingDoor.x, 230, "E · ВИХІД");
+}
+function drawTrainingSoldier(x, y, uniform) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.fillStyle = "#0005";
+  ctx.beginPath();
+  ctx.ellipse(0, 12, 23, 16, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#1c292a";
+  rounded(ctx, -13, 4, 10, 23, 4);
+  rounded(ctx, 3, 4, 10, 23, 4);
+  ctx.fillStyle = uniform;
+  rounded(ctx, -19, -18, 38, 29, 9);
+  ctx.fillStyle = "#d8b28a";
+  ctx.beginPath();
+  ctx.arc(0, -24, 14, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#4c5643";
+  rounded(ctx, -16, -37, 32, 9, 5);
+  ctx.fillStyle = "#c0a267";
+  ctx.fillRect(-4, -33, 8, 3);
+  ctx.restore();
+}
+function drawTrainingAvatar(x, y, t) {
+  ctx.save();
+  ctx.translate(x, y + Math.sin(t * 7) * 1.5);
+  ctx.fillStyle = "#0006";
+  ctx.beginPath();
+  ctx.ellipse(3, 13, 24, 15, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#202c36";
+  rounded(ctx, -13, 4, 10, 22, 4);
+  rounded(ctx, 3, 4, 10, 22, 4);
+  ctx.fillStyle = "#edc573";
+  rounded(ctx, -15, 20, 13, 7, 3);
+  rounded(ctx, 2, 20, 13, 7, 3);
+  ctx.fillStyle = "#df7548";
+  rounded(ctx, -16, -19, 32, 28, 9);
+  ctx.fillStyle = "#293f4c";
+  rounded(ctx, -13, -12, 26, 19, 6);
+  ctx.fillStyle = "#edc56c";
+  rounded(ctx, -11, -9, 22, 14, 4);
+  ctx.fillStyle = "#f0c391";
+  ctx.beginPath();
+  ctx.arc(0, -28, 13, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#e7b742";
+  ctx.beginPath();
+  ctx.arc(0, -31, 14, Math.PI, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+function updateTraining(dt, t) {
+  if (trainingPhase === "field") {
+    updateCornfield(dt, t);
+    return;
+  }
+  const { x: dx, y: dy } = movementAxes();
+  player.vx += (dx * 285 - player.vx) * Math.min(1, dt * 12);
+  player.vy += (dy * 285 - player.vy) * Math.min(1, dt * 12);
+  if (dx || dy) player.dir = Math.atan2(player.vy, player.vx);
+  player.x = clamp(player.x + player.vx * dt, 55, 1225);
+  player.y = clamp(player.y + player.vy * dt, 145, 745);
+  if (trainingPhase === "escape") {
+    cleanElapsed += dt;
+    if (interactPressed) {
+      interactPressed = false;
+      startCornfieldRun();
+    }
+    return;
+  }
+  const press = interactPressed,
+    held = keyDown("KeyE");
+  interactPressed = false;
+  if (
+    trainingPhase === "brush_pickup" &&
+    (press || held) &&
+    Math.hypot(player.x - toothbrush.x, player.y - toothbrush.y) < 112
+  ) {
+    trainingBrush = true;
+    trainingPhase = "brush_teeth";
+    showToast("ЩІТКУ ЗНАЙДЕНО · ПОЧИСТЬ ЗУБИ");
+  } else if (trainingPhase === "brush_teeth") {
+    if (Math.hypot(player.x - 210, player.y - 550) < 155 && (held || press)) {
+      brushProgress = Math.min(1, brushProgress + (press ? 0.2 : dt * 0.52));
+      if (brushProgress >= 1) {
+        trainingPhase = "clean";
+        brushProgress = 0;
+        chime();
+        showToast("ЗУБИ ПОЧИЩЕНО · ТЕПЕР КАБІНКИ");
+        document.getElementById("objectiveTitle").textContent =
+          "ВІДЧИСТИ ТРИ КАБІНКИ";
+      }
+    } else if (!held) brushProgress = Math.max(0, brushProgress - dt * 0.1);
+  } else if (trainingPhase === "clean") {
+    toiletGuestTimer -= dt;
+    if (
+      toiletGuestTimer <= 0 &&
+      toiletGuestVisits < 7 &&
+      toiletGuests.length < 3
+    ) {
+      const cleaned = toiletStalls.filter(
+          (q) => !q.occupied && q.progress > 0.15,
+        ),
+        available = toiletStalls.filter((q) => !q.occupied),
+        choices = cleaned.length ? cleaned : available,
+        q = choices[Math.floor(Math.random() * choices.length)];
+      toiletGuestTimer = 2.9 + Math.random() * 0.9;
+      if (q) {
+        toiletGuestVisits++;
+        q.occupied = true;
+        toiletGuests.push({
+          x: 640,
+          y: 146,
+          target: q,
+          state: "approach",
+          timer: 0,
+        });
+      }
+    }
+    for (let i = toiletGuests.length - 1; i >= 0; i--) {
+      const g = toiletGuests[i],
+        q = g.target;
+      if (g.state === "approach") {
+        const vx = q.x - g.x,
+          vy = q.y - 42 - g.y,
+          d = Math.hypot(vx, vy) || 1;
+        g.x += (vx / d) * 142 * dt;
+        g.y += (vy / d) * 142 * dt;
+        if (d < 24) {
+          g.state = "using";
+          g.timer = 3.7;
+          showToast("КАБІНКА ЗАЙНЯТА · ПЕРЕЙДИ ДО ІНШОЇ");
+        }
+      } else if (g.state === "using") {
+        g.timer -= dt;
+        if (g.timer <= 0) {
+          q.occupied = false;
+          q.mess = true;
+          q.progress = Math.max(0, q.progress - 0.38);
+          g.state = "leaving";
+          showToast("СОСЛУЖБОВЕЦЬ ЗАЛИШИВ СЛІД · ДОЧИСТЬ КАБІНКУ");
+        }
+      } else {
+        const vx = 1150 - g.x,
+          vy = 150 - g.y,
+          d = Math.hypot(vx, vy) || 1;
+        g.x += (vx / d) * 132 * dt;
+        g.y += (vy / d) * 132 * dt;
+        if (d < 24) toiletGuests.splice(i, 1);
+      }
+    }
+    if (held || press) {
+      let q = null,
+        dist = 1e9;
+      for (const stall of toiletStalls) {
+        const d = Math.hypot(player.x - stall.x, player.y - stall.y);
+        if (d < dist) {
+          q = stall;
+          dist = d;
+        }
+      }
+      if (q && dist < 94 && !q.occupied) {
+        q.progress = Math.min(1, q.progress + (press ? 0.08 : dt * 0.45));
+        q.cleaning = q.progress;
+        if (q.progress >= 0.995) {
+          q.progress = 1;
+          q.mess = false;
+        }
+      } else toiletStalls.forEach((stall) => (stall.cleaning = 0));
+    } else toiletStalls.forEach((stall) => (stall.cleaning = 0));
+    const cleanCount = toiletStalls.filter((q) => q.progress >= 0.995).length;
+    document.getElementById("delivered").textContent = `${cleanCount} / 3`;
+    if (
+      cleanCount === 3 &&
+      toiletGuests.length === 0 &&
+      toiletGuestVisits >= 7
+    ) {
+      trainingPhase = "return_brush";
+      showToast("УСІ КАБІНКИ ЧИСТІ · ПОВЕРНИ ЩІТКУ");
+    }
+  } else if (
+    trainingPhase === "return_brush" &&
+    press &&
+    Math.hypot(player.x - 210, player.y - 550) < 95
+  ) {
+    trainingBrush = false;
+    trainingPhase = "leave";
+    document.getElementById("objectiveTitle").textContent = "ВИХІД У ДВІР";
+    showToast("ЩІТКУ ПОВЕРНУТО · ВИХІД У ДВОРІ");
+  } else if (
+    trainingPhase === "leave" &&
+    press &&
+    Math.hypot(player.x - trainingDoor.x, player.y - trainingDoor.y) < 78
+  ) {
+    trainingPhase = "escape";
+    cleanElapsed = 0;
+    showToast("ДВЕРІ ВІДЧИНЕНО · ДО ПОЛЯ");
+  }
+  if (toastTimer > 0) {
+    toastTimer -= dt;
+    if (toastTimer <= 0)
+      document.getElementById("toast").classList.remove("show");
+  }
+}
+const CORN_TILE = 1160;
+function cornPath(worldY, lane = 0) {
+  return (
+    640 +
+    Math.sin((worldY * Math.PI * 2) / CORN_TILE + lane * 2.3) *
+      (lane ? 95 : 170) +
+    lane * 245
+  );
+}
+function buildCornfieldBackdrop() {
+  fieldBackdrop = document.createElement("canvas");
+  fieldBackdrop.width = W;
+  fieldBackdrop.height = CORN_TILE;
+  const c = fieldBackdrop.getContext("2d");
+  c.fillStyle = "#35432c";
+  c.fillRect(0, 0, W, CORN_TILE);
+  for (let gy = 0; gy < CORN_TILE; gy += 58) {
+    const center = cornPath(gy);
+    for (let col = 0; col < 24; col++) {
+      const x = col * 56 - 24,
+        seed = ((gy / 58) * 31 + col * 17) | 0;
+      if (Math.abs(x - center) < 64 || Math.abs(x - cornPath(gy, 1)) < 38)
+        continue;
+      drawCornPlantTo(c, x, gy + ((seed % 9) - 4), seed);
+    }
+  }
+  c.fillStyle = "#927e57";
+  c.globalAlpha = 0.35;
+  for (let lane = 0; lane < 2; lane++) {
+    c.beginPath();
+    for (let gy = 0; gy <= CORN_TILE; gy += 29) {
+      const x = cornPath(gy, lane);
+      if (!gy) c.moveTo(x, gy);
+      else c.lineTo(x, gy);
+    }
+    c.lineWidth = lane ? 24 : 39;
+    c.strokeStyle = "#a99668";
+    c.stroke();
+  }
+  c.globalAlpha = 1;
+  for (let x = 0; x < W; x += 76) {
+    c.fillStyle = x % 2 ? "#536e3b" : "#456336";
+    c.fillRect(x, 0, 2, CORN_TILE);
+  }
+}
+function drawCornPlantTo(c, x, y, seed) {
+  c.strokeStyle = seed % 3 ? "#567c3d" : "#739247";
+  c.lineWidth = 3;
+  c.beginPath();
+  c.moveTo(x, y + 17);
+  c.quadraticCurveTo(x, y, x, y - 18);
+  c.stroke();
+  c.fillStyle = seed % 2 ? "#78994a" : "#95a853";
+  for (let k = 0; k < 3; k++) {
+    const side = k % 2 ? 1 : -1,
+      yy = y - 2 - k * 7;
+    c.beginPath();
+    c.ellipse(x + side * (8 + k * 2), yy, 12, 4, side * 0.36, 0, Math.PI * 2);
+    c.fill();
+  }
+  c.fillStyle = "#d9c66a";
+  c.beginPath();
+  c.ellipse(x, y - 17, 3, 7, 0, 0, Math.PI * 2);
+  c.fill();
+}
+function fieldTrack(type, x, y) {
+  fieldTracks.push({
+    type,
+    x,
+    y,
+    life: type === "hero" ? 30 : type === "dog" ? 24 : 27,
+    max: type === "hero" ? 30 : type === "dog" ? 24 : 27,
+    angle: Math.random() * 0.22 - 0.11,
+  });
+  if (fieldTracks.length > 500) fieldTracks.splice(0, fieldTracks.length - 500);
+}
+function updateCornfield(dt, t) {
+  const { x: dx, y: dy } = movementAxes(),
+    laneDist = Math.min(
+      Math.abs(player.x - cornPath(player.y)),
+      Math.abs(player.x - cornPath(player.y, 1)),
+    ),
+    speed = laneDist < 62 ? 312 : 156;
+  player.vx += (dx * speed - player.vx) * Math.min(1, dt * 11);
+  player.vy += (dy * speed - player.vy) * Math.min(1, dt * 11);
+  if (dx || dy) {
+    fieldAimX = dx;
+    fieldAimY = dy;
+    player.dir = Math.atan2(player.vy, player.vx);
+  }
+  player.x = clamp(player.x + player.vx * dt, 56, 1224);
+  player.y += player.vy * dt;
+  fieldProgress = Math.max(0, -player.y);
+  fieldSway += dt;
+  fieldCar.phase += dt;
+  fieldCar.ready = fieldProgress > fieldTarget * 0.72;
+  fieldCar.x = 640 + Math.sin(t * 0.55) * 110;
+  fieldCar.y = -fieldTarget;
+  const moved = Math.hypot(player.x - fieldTrackX, player.y - fieldTrackY);
+  if (moved > 25) {
+    fieldTrack("hero", player.x, player.y);
+    fieldTrackX = player.x;
+    fieldTrackY = player.y;
+  }
+  for (const tr of fieldTracks) tr.life -= dt;
+  fieldTracks = fieldTracks.filter((tr) => tr.life > 0);
+  for (const n of fieldDecoys) n.life -= dt;
+  fieldDecoys = fieldDecoys.filter((n) => n.life > 0);
+  shotCooldown = Math.max(0, shotCooldown - dt);
+  fieldInvuln = Math.max(0, fieldInvuln - dt);
+  if ((keyDown("Space") || boostPressed) && shotCooldown <= 0) {
+    const d = Math.hypot(fieldAimX, fieldAimY) || 1,
+      ax = fieldAimX / d,
+      ay = fieldAimY / d;
+    fieldShots.push({
+      x: player.x + ax * 24,
+      y: player.y + ay * 24,
+      vx: ax * 650,
+      vy: ay * 650,
+      life: 1,
+    });
+    fieldDecoys.push({
+      x: player.x + ax * 330,
+      y: player.y + ay * 330,
+      life: 3.4,
+      max: 3.4,
+    });
+    shotCooldown = 0.62;
+    tone(590, 0.07, "triangle", 0.03, 150);
+  }
+  boostPressed = false;
+  for (const shot of fieldShots) {
+    shot.x += shot.vx * dt;
+    shot.y += shot.vy * dt;
+    shot.life -= dt;
+  }
+  fieldShots = fieldShots.filter((q) => q.life > 0);
+  fieldSpawnTimer -= dt;
+  if (
+    fieldSpawnTimer <= 0 &&
+    fieldProgress < fieldTarget * 0.94 &&
+    fieldEnemies.length < 9
+  ) {
+    fieldSpawnTimer = Math.max(0.58, 1.55 - fieldProgress / 3100);
+    const edge = Math.floor(Math.random() * 4),
+      cam = player.y - 575;
+    let x =
+        edge === 0 ? 24 : edge === 1 ? W - 24 : 90 + Math.random() * (W - 180),
+      y =
+        edge === 2
+          ? cam + 95
+          : edge === 3
+            ? cam + H - 70
+            : cam + 140 + Math.random() * (H - 250),
+      roll = Math.random(),
+      type = roll < 0.55 ? "guard" : "dog";
+    fieldEnemies.push({
+      x,
+      y,
+      type,
+      hp: type === "guard" ? 2 : 1,
+      speed: type === "dog" ? 196 : 136,
+      phase: Math.random() * 8,
+      sniff: 0,
+    });
+  }
+  for (let i = fieldEnemies.length - 1; i >= 0; i--) {
+    const e = fieldEnemies[i];
+    e.phase += dt * 5;
+    let tx = player.x,
+      ty = player.y,
+      best = 560;
+    for (const n of fieldDecoys) {
+      const d = Math.hypot(n.x - e.x, n.y - e.y);
+      if (d < best) {
+        best = d;
+        tx = n.x;
+        ty = n.y;
+      }
+    }
+    if (e.sniff > 0) e.sniff -= dt;
+    else {
+      const vx = tx - e.x,
+        vy = ty - e.y,
+        d = Math.hypot(vx, vy) || 1,
+        brushDist = Math.min(
+          Math.abs(e.x - cornPath(e.y)),
+          Math.abs(e.x - cornPath(e.y, 1)),
+        ),
+        pace = e.speed * (brushDist < 62 ? 1 : 0.68);
+      e.x += (vx / d) * pace * dt + Math.sin(e.phase) * 12 * dt;
+      e.y += (vy / d) * pace * dt;
+      if (best < 560 && Math.hypot(tx - e.x, ty - e.y) < 34) e.sniff = 1.25;
+    }
+    if (
+      e._trackX == null ||
+      Math.hypot(e.x - e._trackX, e.y - e._trackY) > 34
+    ) {
+      fieldTrack(e.type, e.x, e.y);
+      e._trackX = e.x;
+      e._trackY = e.y;
+    }
+    for (let j = fieldShots.length - 1; j >= 0; j--) {
+      const q = fieldShots[j];
+      if (Math.hypot(q.x - e.x, q.y - e.y) < 32) {
+        fieldShots.splice(j, 1);
+        e.hp--;
+        fieldDecoys.push({ x: q.x, y: q.y, life: 2.3, max: 2.3 });
+        if (e.hp <= 0) {
+          fieldEnemies.splice(i, 1);
+          score += 80;
+        }
+        break;
+      }
+    }
+    if (!fieldEnemies.includes(e)) continue;
+    if (Math.abs(e.y - player.y) > 1150) fieldEnemies.splice(i, 1);
+    else if (
+      fieldInvuln <= 0 &&
+      Math.hypot(player.x - e.x, player.y - e.y) < 38
+    ) {
+      fieldLives--;
+      fieldInvuln = 1.05;
+      player.vx += (player.x - e.x) * 2;
+      player.vy += (player.y - e.y) * 2;
+      showToast(`ПОГОНЯ ЗБИЛА З КУРСУ · ${fieldLives} ♥`);
+      if (fieldLives <= 0) {
+        showTrainingFail();
+        return;
+      }
+    }
+  }
+  if (
+    fieldCar.ready &&
+    Math.hypot(player.x - fieldCar.x, player.y - fieldCar.y) < 118
+  ) {
+    showTrainingEnd();
+    return;
+  }
+  document.getElementById("delivered").textContent =
+    `${Math.min(fieldTarget, Math.floor(fieldProgress))} м`;
+  document.getElementById("score").textContent = String(score).padStart(4, "0");
+  if (fieldCar.ready) {
+    document.getElementById("objectiveTitle").textContent = "MAZDA ПОПЕРЕДУ";
+    document.getElementById("objectiveText").textContent =
+      "Добіжи до машини, кидай сирники вбік і стеж за слідами погоні.";
+  }
+}
+function drawCornPlant(x, y, t, seed) {
+  const sway = Math.sin(t * 2.2 + seed) * 4;
+  ctx.strokeStyle = seed % 3 ? "#567c3d" : "#739247";
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(x, y + 17);
+  ctx.quadraticCurveTo(x + sway, y, x + sway * 0.6, y - 18);
+  ctx.stroke();
+  ctx.fillStyle = seed % 2 ? "#78994a" : "#95a853";
+  for (let k = 0; k < 3; k++) {
+    const side = k % 2 ? 1 : -1,
+      yy = y - 2 - k * 7;
+    ctx.beginPath();
+    ctx.ellipse(
+      x + sway + side * (8 + k * 2),
+      yy,
+      12,
+      4,
+      side * 0.36,
+      0,
+      Math.PI * 2,
+    );
+    ctx.fill();
+  }
+  ctx.fillStyle = "#d9c66a";
+  ctx.beginPath();
+  ctx.ellipse(x + sway * 0.6, y - 17, 3, 7, 0, 0, Math.PI * 2);
+  ctx.fill();
+}
+function drawFieldPerson(x, y, type, t) {
+  if (type === "dog") {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(Math.sin(t * 7 + x) * 0.12);
+    ctx.fillStyle = "#714a33";
+    ctx.beginPath();
+    ctx.ellipse(0, 2, 22, 13, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(17, -5, 10, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#e3c98b";
+    ctx.beginPath();
+    ctx.arc(20, -7, 2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "#392b24";
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(-12, 9);
+    ctx.lineTo(-16, 18);
+    ctx.moveTo(8, 9);
+    ctx.lineTo(12, 17);
+    ctx.stroke();
+    ctx.restore();
+  } else drawTrainingSoldier(x, y, "#6f7c54");
+}
+function drawFieldCar(t, sy) {
+  ctx.save();
+  ctx.translate(fieldCar.x, sy);
+  ctx.fillStyle = "#0008";
+  ctx.beginPath();
+  ctx.ellipse(0, 38, 76, 24, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#101820";
+  rounded(ctx, -72, -26, 144, 72, 17);
+  ctx.fillStyle = "#17242b";
+  rounded(ctx, -53, -46, 106, 43, 15);
+  ctx.fillStyle = "#a8c5c4";
+  rounded(ctx, -36, -40, 72, 24, 7);
+  ctx.fillStyle = "#d4ab7e";
+  ctx.beginPath();
+  ctx.arc(0, -29, 8, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#101820";
+  rounded(ctx, -57, -15, 114, 48, 12);
+  ctx.fillStyle = "#e6bd52";
+  ctx.fillRect(-68, 20, 15, 9);
+  ctx.fillRect(53, 20, 15, 9);
+  ctx.fillStyle = "#d8f2c7";
+  ctx.fillRect(-63, -6, 7, 11);
+  ctx.fillRect(56, -6, 7, 11);
+  ctx.fillStyle = "#fbebac";
+  ctx.font = "bold 11px Arial";
+  ctx.textAlign = "center";
+  ctx.fillText("КУМ · MAZDA", 0, 59);
+  ctx.restore();
+}
+function drawCornfieldMap() {
+  const x = 1052,
+    y = 14,
+    w = 212,
+    h = 204;
+  ctx.fillStyle = "#07131ddd";
+  rounded(ctx, x, y, w, h, 10);
+  ctx.fillStyle = "#f5e9c7";
+  ctx.font = "bold 12px Arial";
+  ctx.textAlign = "left";
+  ctx.fillText("МАРШРУТ ДО MAZDA ↑", x + 12, y + 21);
+  ctx.fillStyle = "#34432f";
+  rounded(ctx, x + 10, y + 30, w - 20, h - 40, 7);
+  for (let lane = 0; lane < 2; lane++) {
+    ctx.strokeStyle = lane ? "#879969" : "#d6c17c";
+    ctx.globalAlpha = 0.85;
+    ctx.lineWidth = lane ? 2 : 3;
+    ctx.beginPath();
+    for (let i = 0; i <= 18; i++) {
+      const p = i / 18,
+        worldY = -fieldTarget * p,
+        mx = x + 22 + (cornPath(worldY, lane) / W) * (w - 44),
+        my = y + h - 20 - p * (h - 61);
+      if (!i) ctx.moveTo(mx, my);
+      else ctx.lineTo(mx, my);
+    }
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+  const px = x + 22 + (player.x / W) * (w - 44),
+    py = y + h - 20 - Math.min(1, fieldProgress / fieldTarget) * (h - 61);
+  ctx.fillStyle = "#ffe37b";
+  ctx.beginPath();
+  ctx.arc(px, py, 5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = "#17221b";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.fillStyle = "#eff2c8";
+  ctx.font = "bold 10px Arial";
+  ctx.textAlign = "center";
+  ctx.fillText("🚙", x + w / 2, y + 43);
+}
+function drawCornfield(t) {
+  ctx.clearRect(0, 0, W, H);
+  const cam = player.y - 575,
+    tile = CORN_TILE,
+    offset = -(((cam % tile) + tile) % tile);
+  ctx.fillStyle = "#35432c";
+  ctx.fillRect(0, 0, W, H);
+  for (let y = offset; y < H; y += tile) ctx.drawImage(fieldBackdrop, 0, y);
+  for (let i = 0; i < 24; i++) {
+    const side = i % 2 ? 1 : -1,
+      x = side < 0 ? 18 + ((i * 67) % 250) : W - 18 - ((i * 67) % 250),
+      y = (i * 97 + t * 31) % H;
+    drawCornPlant(x, y, t, i * 17);
+  }
+  for (const tr of fieldTracks) {
+    const sy = tr.y - cam;
+    if (sy < -24 || sy > H + 24) continue;
+    ctx.save();
+    ctx.globalAlpha = 0.78 * (tr.life / tr.max);
+    ctx.translate(tr.x, sy);
+    ctx.rotate(tr.angle);
+    const c =
+      tr.type === "hero"
+        ? "#f1d989"
+        : tr.type === "dog"
+          ? "#e6a454"
+          : "#df7569";
+    ctx.strokeStyle = "#322f22";
+    ctx.lineWidth = 12;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(-18, 2);
+    ctx.quadraticCurveTo(0, -8, 18, 2);
+    ctx.stroke();
+    ctx.strokeStyle = c;
+    ctx.lineWidth = 7;
+    ctx.beginPath();
+    ctx.moveTo(-18, 2);
+    ctx.quadraticCurveTo(0, -8, 18, 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+  for (const n of fieldDecoys) {
+    const sy = n.y - cam;
+    if (sy < 0 || sy > H) continue;
+    ctx.globalAlpha = 0.35 + 0.3 * Math.sin(t * 12);
+    ctx.fillStyle = "#fff0a8";
+    ctx.beginPath();
+    ctx.arc(n.x, sy, 11 + Math.sin(t * 8) * 2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = "#7c5b2f";
+    ctx.beginPath();
+    ctx.arc(n.x, sy, 5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  for (const q of fieldShots) {
+    const sy = q.y - cam;
+    if (sy < 0 || sy > H) continue;
+    ctx.fillStyle = "#ffe196";
+    ctx.beginPath();
+    ctx.arc(q.x, sy, 8, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  for (const e of fieldEnemies) {
+    const sy = e.y - cam;
+    if (sy < -45 || sy > H + 45) continue;
+    drawFieldPerson(e.x, sy, e.type, t);
+    if (e.sniff > 0) {
+      ctx.fillStyle = "#fff0a8";
+      ctx.font = "bold 16px Arial";
+      ctx.textAlign = "center";
+      ctx.fillText("…", e.x, sy - 26);
+    }
+  }
+  drawTrainingAvatar(player.x, 575, t);
+  if (fieldCar.ready) {
+    const sy = fieldCar.y - cam;
+    if (sy > -90 && sy < H + 90) drawFieldCar(t, sy);
+  }
+  ctx.fillStyle = "#07131ddd";
+  rounded(ctx, 18, 14, 400, 103, 10);
+  ctx.fillStyle = "#f5e9c7";
+  ctx.font = "bold 14px Arial";
+  ctx.textAlign = "left";
+  ctx.fillText("04B · ВТЕЧА КРІЗЬ КУКУРУДЗУ", 32, 36);
+  ctx.font = "bold 11px Arial";
+  ctx.fillStyle = "#fff";
+  ctx.fillText(
+    `ШЛЯХ ${Math.floor(fieldProgress)} / ${fieldTarget} м     ОЧКИ ${String(score).padStart(4, "0")}     ♥ ${fieldLives}`,
+    32,
+    55,
+  );
+  ctx.fillStyle = "#17251c";
+  rounded(ctx, 32, 64, 370, 8, 4);
+  ctx.fillStyle = "#77ddb2";
+  rounded(ctx, 34, 66, 366 * Math.min(1, fieldProgress / fieldTarget), 4, 2);
+  ctx.font = "bold 10px Arial";
+  ctx.fillStyle = "#f1d989";
+  ctx.fillText("━ ТИ", 32, 88);
+  ctx.fillStyle = "#df7569";
+  ctx.fillText("━ СОЛДАТ", 105, 88);
+  ctx.fillStyle = "#e6a454";
+  ctx.fillText("━ СОБАКА", 205, 88);
+  ctx.fillStyle = "#d7e2d1";
+  ctx.fillText("WASD · РУХ   SPACE · СИРНИК ВІДВОЛІКАЄ", 32, 105);
+  drawCornfieldMap();
+  if (fieldSway < 5) {
+    ctx.save();
+    ctx.globalAlpha = Math.min(1, (5 - fieldSway) * 1.5);
+    ctx.fillStyle = "#08131ee8";
+    rounded(ctx, 438, 14, 448, 42, 8);
+    ctx.fillStyle = "#fff1c8";
+    ctx.font = "bold 11px Arial";
+    ctx.textAlign = "center";
+    ctx.fillText(
+      "WASD — РУХ · SPACE — КИНЬ СИРНИК УБІК, ЩОБ ВІДВОЛІКТИ ПОГОНЮ",
+      662,
+      39,
+    );
+    ctx.restore();
+  }
+  if (fieldCar.ready) {
+    ctx.fillStyle = "#ffe89c";
+    ctx.font = "bold 11px Arial";
+    ctx.textAlign = "center";
+    ctx.fillText("MAZDA ПОПЕРЕДУ · КУМ ЧЕКАЄ", W / 2, 25);
+  }
+}
+function drawTrainingPrompt(x, y, label, progress) {
+  ctx.save();
+  ctx.textAlign = "center";
+  ctx.font = "bold 10px Arial";
+  const w = Math.max(60, ctx.measureText(label).width + 14);
+  ctx.fillStyle = "#101923e8";
+  rounded(ctx, x - w / 2, y - 17, w, 21, 6);
+  ctx.fillStyle = "#fff";
+  ctx.fillText(label, x, y - 3);
+  if (progress != null) {
+    ctx.fillStyle = "#18251f";
+    rounded(ctx, x - w / 2, y + 8, w, 6, 3);
+    ctx.fillStyle = "#61d3a8";
+    rounded(ctx, x - w / 2 + 2, y + 10, (w - 4) * progress, 2, 2);
+  }
+  ctx.restore();
+}
+function showTrainingEnd() {
+  running = false;
+  gameEnded = true;
+  const layer = document.getElementById("intro");
+  layer.classList.remove("hidden");
+  layer.innerHTML = `<section class="card"><div class="eyebrow">РІВЕНЬ 4 · ПОЛЕ ЗАЛИШИЛОСЯ ПОЗАДУ</div><h1>У Mazda.<br><em>І жодного строю.</em></h1><p>За кермом Mazda чекає кум. Герой дав йому гроші «на відкуп», а кум купив у Steam картинки ножиків для CS. «Кста, сідай — А потім помер», — каже він і тисне на газ.</p><div class="mission"><span>🪪 Пропуск: отримано</span><span>🌽 Поле: пройдено</span></div><button id="retryLevel4Btn">ПОВТОРИТИ ПОЛЕ　↻</button><button id="toLevel5Btn" class="secondary">ПЕРЕЙТИ ДО РІВНЯ 5　→</button><br><button id="menuLevel4Btn" class="secondary">ГОЛОВНЕ МЕНЮ</button></section>`;
+  document.getElementById("retryLevel4Btn").onclick = startCornfieldLevel;
+  document.getElementById("toLevel5Btn").onclick = showVrCutscene;
+  document.getElementById("menuLevel4Btn").onclick = () => location.reload();
+}
+function showTrainingFail() {
+  running = false;
+  gameEnded = true;
+  const layer = document.getElementById("intro");
+  layer.classList.remove("hidden");
+  layer.innerHTML = `<section class="card"><div class="eyebrow">РІВЕНЬ 4 · ПОЛЕ</div><h1>Кукурудза виграла.<br><em>Цього разу.</em></h1><p>Переслідувачі наздогнали героя. Зберися, віднови запас сирників і спробуй ще раз.</p><button id="retryLevel4Btn">ПОВТОРИТИ ПОЛЕ　↻</button></section>`;
+  document.getElementById("retryLevel4Btn").onclick = startCornfieldLevel;
+}
+
+
+/* Source: js/07-engine.js */
+function drawWorld(t) {
+  if (stage === 3 && chaseBackdrop) {
+    drawChaseWorld(t);
+    return;
+  }
+  if (stage === 2) {
+    drawCafe(t);
+    return;
+  }
+  if (stage === 5 || stage === 9) {
+    drawTrainingStage(t);
+    return;
+  }
+  if (stage === 6) {
+    drawVrArcade(t);
+    return;
+  }
+  if (stage === 7) {
+    drawForest(t);
+    return;
+  }
+  if (stage === 8) {
+    drawGermany(t);
+    return;
+  }
+  if (stage === 4) {
+    drawCaptureCutscene(
+      Math.max(0, (performance.now() - captureStartedAt) / 1000),
+    );
+    return;
+  }
+  ctx.clearRect(0, 0, W, H);
+  ctx.save();
+  ctx.translate(W / 2 - player.x, H / 2 - player.y);
+  drawGround();
+  drawScenery(t);
+  drawDistrict();
+  if (stage === 1 || stage === 3) drawSmilaLandmarks(t);
+  if (stage === 3) drawNeonCity(t);
+  roadsX.forEach((x) =>
+    roadsY.forEach((y) => {
+      ctx.fillStyle = "#d0c1a0";
+      ctx.beginPath();
+      ctx.arc(x, y, 13, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#6d8a69";
+      ctx.beginPath();
+      ctx.arc(x, y, 8, 0, Math.PI * 2);
+      ctx.fill();
+    }),
+  );
+  const navTarget =
+    stage === 3
+      ? chaseMarkerActive
+        ? chaseDestination
+        : null
+      : deliveries[0] || (courierToCafe ? cafeDestination : null);
+  if (navTarget) {
+    const route = cityRoute(player, navTarget);
+    ctx.save();
+    ctx.strokeStyle = "#172128b8";
+    ctx.lineWidth = 15;
+    ctx.lineJoin = "round";
+    ctx.lineCap = "round";
+    ctx.setLineDash([]);
+    ctx.beginPath();
+    route.forEach((q, i) => {
+      if (!i) ctx.moveTo(q.x, q.y);
+      else ctx.lineTo(q.x, q.y);
+    });
+    ctx.stroke();
+    ctx.strokeStyle = "#ffd66d";
+    ctx.lineWidth = 7;
+    ctx.setLineDash([15, 11]);
+    ctx.beginPath();
+    route.forEach((q, i) => {
+      if (!i) ctx.moveTo(q.x, q.y);
+      else ctx.lineTo(q.x, q.y);
+    });
+    ctx.stroke();
+    ctx.restore();
+  }
+  cars.forEach((c) => drawCar(c, t));
+  pedestrians.forEach((p) => drawPedestrian(p, t));
+  deliveries.forEach((d, i) => drawDelivery(d, i, t));
+  if (courierToCafe) drawCafeDestination(t);
+  if (stage === 3 && chaseMarkerActive) drawSafeMarker(t);
+  if (stage === 3) drawChaseVan(t);
+  drawPlayer(t);
+  ctx.restore();
+  if (stage === 3) drawNightOverlay(t);
+  if (stage !== 3) {
+    const vign = ctx.createRadialGradient(W / 2, H / 2, 240, W / 2, H / 2, 770);
+    vign.addColorStop(0, "transparent");
+    vign.addColorStop(1, "#12192158");
+    ctx.fillStyle = vign;
+    ctx.fillRect(0, 0, W, H);
+  }
+}
+function drawMini() {
+  if (stage === 8 && germany) {
+    mctx.clearRect(0, 0, MINI_W, MINI_H);
+    mctx.fillStyle = "#d3d8ce";
+    mctx.fillRect(0, 0, MINI_W, MINI_H);
+    const sx = MINI_W / germany.worldW,
+      sy = MINI_H / germany.worldH;
+    mctx.fillStyle = "#596168";
+    for (const y of [250, 800, 1350, 1700])
+      mctx.fillRect(0, y * sy - 3, MINI_W, 6);
+    for (const x of [200, 700, 1200, 1700, 2200])
+      mctx.fillRect(x * sx - 3, 0, 6, MINI_H);
+    const goal = germanyGoal();
+    mctx.strokeStyle = "#28353b99";
+    mctx.lineWidth = 1.5;
+    mctx.setLineDash([4, 3]);
+    mctx.beginPath();
+    mctx.moveTo(germany.x * sx, germany.y * sy);
+    mctx.lineTo(goal.x * sx, goal.y * sy);
+    mctx.stroke();
+    mctx.setLineDash([]);
+    for (const item of germany.items) {
+      mctx.fillStyle = "#36a978";
+      mctx.beginPath();
+      mctx.arc(item.x * sx, item.y * sy, 2.7, 0, Math.PI * 2);
+      mctx.fill();
+    }
+    for (const rival of germany.rivals) {
+      mctx.fillStyle = rival.stun > 0 ? "#ffe08a" : "#d96f53";
+      mctx.beginPath();
+      mctx.arc(rival.x * sx, rival.y * sy, 3.2, 0, Math.PI * 2);
+      mctx.fill();
+    }
+    const goalColor = !germany.banked
+      ? "#ffe26a"
+      : germany.shopping
+        ? "#9d75db"
+        : "#d95074";
+    mctx.fillStyle = goalColor;
+    mctx.beginPath();
+    mctx.arc(goal.x * sx, goal.y * sy, 5.3, 0, Math.PI * 2);
+    mctx.fill();
+    mctx.strokeStyle = "#fff";
+    mctx.lineWidth = 1.5;
+    mctx.stroke();
+    mctx.fillStyle = "#41c6a6";
+    mctx.beginPath();
+    mctx.arc(germany.x * sx, germany.y * sy, 4.2, 0, Math.PI * 2);
+    mctx.fill();
+    mctx.strokeStyle = "#fff";
+    mctx.lineWidth = 1;
+    mctx.stroke();
+    return;
+  }
+  if (stage === 2 || stage === 5 || stage === 6 || stage === 7 || stage === 9)
+    return;
+  mctx.clearRect(0, 0, MINI_W, MINI_H);
+  mctx.fillStyle = "#9eaf91";
+  mctx.fillRect(0, 0, MINI_W, MINI_H);
+  mctx.fillStyle = "#4a545d";
+  roadsX.forEach((x) =>
+    mctx.fillRect((x / world.w) * MINI_W - 4, 0, 8, MINI_H),
+  );
+  roadsY.forEach((y) =>
+    mctx.fillRect(0, (y / world.h) * MINI_H - 4, MINI_W, 8),
+  );
+  if (stage === 3) {
+    mctx.fillStyle = "rgba(8,16,34,.16)";
+    mctx.fillRect(0, 0, MINI_W, MINI_H);
+  }
+  for (const [lx, ly, label, color] of [
+    [700, 760, "Ц", "#ffe5a3"],
+    [2760, 2110, "A", "#ff916f"],
+  ]) {
+    mctx.fillStyle = color;
+    mctx.beginPath();
+    mctx.arc(
+      (lx / world.w) * MINI_W,
+      (ly / world.h) * MINI_H,
+      4,
+      0,
+      Math.PI * 2,
+    );
+    mctx.fill();
+    mctx.font = "bold 7px Arial";
+    mctx.textAlign = "center";
+    mctx.fillText(label, (lx / world.w) * MINI_W, (ly / world.h) * MINI_H - 6);
+  }
+  const targets = deliveries.filter((d) => !d.done),
+    goal =
+      stage === 3
+        ? chaseMarkerActive
+          ? chaseDestination
+          : null
+        : targets[0] || (courierToCafe ? cafeDestination : null);
+  if (goal) {
+    const route = cityRoute(player, goal);
+    mctx.strokeStyle = stage === 3 ? "#ffd77a" : "#fff1a8";
+    mctx.lineWidth = 2;
+    mctx.setLineDash([5, 4]);
+    mctx.beginPath();
+    route.forEach((q, i) => {
+      const x = (q.x / world.w) * MINI_W,
+        y = (q.y / world.h) * MINI_H;
+      if (!i) mctx.moveTo(x, y);
+      else mctx.lineTo(x, y);
+    });
+    mctx.stroke();
+    mctx.setLineDash([]);
+  }
+  for (const d of deliveries) {
+    mctx.fillStyle = d.done ? "#72847b" : d.color;
+    mctx.beginPath();
+    mctx.arc(
+      (d.x / world.w) * MINI_W,
+      (d.y / world.h) * MINI_H,
+      4,
+      0,
+      Math.PI * 2,
+    );
+    mctx.fill();
+  }
+  if (courierToCafe) {
+    mctx.fillStyle = "#39edb7";
+    mctx.beginPath();
+    mctx.arc(
+      (cafeDestination.x / world.w) * MINI_W,
+      (cafeDestination.y / world.h) * MINI_H,
+      6,
+      0,
+      Math.PI * 2,
+    );
+    mctx.fill();
+    mctx.fillStyle = "#102a28";
+    mctx.font = "bold 8px Arial";
+    mctx.textAlign = "center";
+    mctx.fillText(
+      "VR",
+      (cafeDestination.x / world.w) * MINI_W,
+      (cafeDestination.y / world.h) * MINI_H + 3,
+    );
+  }
+  if (stage === 3) {
+    mctx.fillStyle = "#43572e";
+    mctx.beginPath();
+    mctx.arc(
+      (chaseVan.x / world.w) * MINI_W,
+      (chaseVan.y / world.h) * MINI_H,
+      4,
+      0,
+      Math.PI * 2,
+    );
+    mctx.fill();
+    if (chaseMarkerActive) {
+      mctx.fillStyle = "#4cf0b5";
+      mctx.beginPath();
+      mctx.arc(
+        (chaseDestination.x / world.w) * MINI_W,
+        (chaseDestination.y / world.h) * MINI_H,
+        6,
+        0,
+        Math.PI * 2,
+      );
+      mctx.fill();
+      mctx.strokeStyle = "#fff";
+      mctx.stroke();
+    }
+  }
+  mctx.fillStyle = "#20bda7";
+  mctx.beginPath();
+  mctx.arc(
+    (player.x / world.w) * MINI_W,
+    (player.y / world.h) * MINI_H,
+    4,
+    0,
+    Math.PI * 2,
+  );
+  mctx.fill();
+  mctx.strokeStyle = "#fff";
+  mctx.lineWidth = 1;
+  mctx.stroke();
+}
+function update(dt, t) {
+  pollGamepad();
+  if (!running || paused) return;
+  if (stage === 5 || stage === 9) {
+    updateTraining(dt, t);
+    return;
+  }
+  if (stage === 6) {
+    updateVrArcade(dt, t);
+    return;
+  }
+  if (stage === 7) {
+    updateForest(dt, t);
+    return;
+  }
+  if (stage === 8) {
+    updateGermany(dt, t);
+    return;
+  }
+  time -= dt;
+  if (time <= 0) {
+    time = 0;
+    document.getElementById("timer").textContent = "00:00";
+    if (stage === 3) {
+      showChaseCapture();
+      return;
+    }
+    finish(false);
+    return;
+  }
+  if (stage === 2) {
+    updateCafe(dt);
+    return;
+  }
+  if (stage === 3) {
+    updateChase(dt);
+    return;
+  }
+  updateCityTraffic(dt);
+  if (!churchEventUsed && Math.hypot(player.x - 700, player.y - 760) < 150) {
+    churchEventUsed = true;
+    time = Math.min(99, time + 8);
+    score += 100;
+    showToast("ДЗВІН НАД СМІЛОЮ · +8 СЕКУНД");
+    chime();
+  }
+  if (!azotEventUsed && Math.hypot(player.x - 2760, player.y - 2110) < 190) {
+    azotEventUsed = true;
+    player.boost = Math.max(player.boost, 1.6);
+    score += 150;
+    showToast("АЗОТ ПІДКИНУВ ПОПУТНИЙ ВІТЕР · РИВОК");
+    tone(340, 0.2, "triangle", 0.04, 450);
+  }
+  player.boostCd = Math.max(0, player.boostCd - dt);
+  player.boost = Math.max(0, player.boost - dt);
+  player.bump = Math.max(0, player.bump - dt);
+  const { x: ax, y: ay } = movementAxes();
+  const moving = ax || ay,
+    onRoad =
+      roadsX.some((x) => Math.abs(x - player.x) < roadW / 2 - 20) ||
+      roadsY.some((y) => Math.abs(y - player.y) < roadW / 2 - 20),
+    accel = onRoad ? 1180 : 730,
+    max = (onRoad ? 440 : 280) * (player.boost > 0 ? 1.7 : 1);
+  if (moving) {
+    player.vx += ax * accel * dt;
+    player.vy += ay * accel * dt;
+    player.dir = Math.atan2(player.vy, player.vx);
+  } else {
+    player.vx *= Math.pow(0.06, dt);
+    player.vy *= Math.pow(0.06, dt);
+  }
+  const sp = Math.hypot(player.vx, player.vy);
+  if (sp > max) {
+    player.vx = (player.vx / sp) * max;
+    player.vy = (player.vy / sp) * max;
+  }
+  const oldx = player.x,
+    oldy = player.y;
+  player.x = clamp(player.x + player.vx * dt, 24, world.w - 24);
+  player.y = clamp(player.y + player.vy * dt, 24, world.h - 24);
+  for (const b of buildings) {
+    const dx = player.x - b.x,
+      dy = player.y - b.y,
+      ox = b.w / 2 + 17 - Math.abs(dx),
+      oy = b.h / 2 + 17 - Math.abs(dy);
+    if (ox > 0 && oy > 0) {
+      if (ox < oy) player.x = oldx;
+      else player.y = oldy;
+      player.vx *= 0.4;
+      player.vy *= 0.4;
+      player.bump = 0.5;
+      score = Math.max(0, score - 8);
+    }
+  }
+  for (const c of cars) {
+    const dx = player.x - c.x,
+      dy = player.y - c.y;
+    if (Math.abs(dx) < 39 && Math.abs(dy) < 28) {
+      player.x = oldx;
+      player.y = oldy;
+      player.vx *= -0.32;
+      player.vy *= -0.32;
+      player.bump = 0.65;
+      score = Math.max(0, score - 12);
+      tone(120, 0.12, "sawtooth", 0.035, -45);
+    }
+  }
+  for (const p of pedestrians) {
+    if (
+      p.stun <= 0 &&
+      Math.hypot(player.x - p.x, player.y - p.y) < 29 &&
+      sp > 48
+    ) {
+      p.stun = 2.6;
+      p.x = clamp(p.x + player.vx * 0.08, 0, world.w);
+      p.y = clamp(p.y + player.vy * 0.08, 0, world.h);
+      player.vx *= 0.65;
+      player.vy *= 0.65;
+      player.bump = 0.65;
+      score = Math.max(0, score - 5);
+      showToast("ОЙ! ПЕРЕПРОШУЄМО ПІШОХОДА");
+      tone(180, 0.08, "triangle", 0.025, -50);
+    }
+  }
+  for (const p of puddles)
+    if (
+      (player.x - p.x) ** 2 / (p.rx * p.rx) +
+        (player.y - p.y) ** 2 / (p.ry * p.ry) <
+        1 &&
+      sp > 70
+    ) {
+      player.vx *= 0.975;
+      player.vy *= 0.975;
+    }
+  if (boostPressed) {
+    boostPressed = false;
+    if (player.boostCd <= 0) {
+      player.boost = 0.8;
+      player.boostCd = 2;
+      const n = Math.hypot(player.vx, player.vy) || 1;
+      player.vx += (player.vx / n) * 270;
+      player.vy += (player.vy / n) * 270;
+      tone(310, 0.16, "sawtooth", 0.045, 400);
+    }
+  }
+  const target = deliveries[0];
+  if (
+    target &&
+    !target.done &&
+    Math.hypot(player.x - target.x, player.y - target.y) < 76
+  ) {
+    target.done = true;
+    delivered++;
+    streak++;
+    bestStreak = Math.max(bestStreak, streak);
+    time = Math.min(99, time + 25);
+    score += 250 + Math.round(time * 2) + Math.min(streak, 10) * 25;
+    chime();
+    document.getElementById("delivered").textContent = String(delivered);
+    document.getElementById("timer").textContent = formatTime(time);
+    tone(740, 0.12, "triangle", 0.045, 300);
+    if (delivered >= 5) {
+      deliveries = [];
+      courierToCafe = true;
+      document.getElementById("objectiveTitle").textContent =
+        "НА ЗМІНУ: VR-КАФЕ";
+      document.getElementById("objectiveText").textContent =
+        "Останню посилку доставлено! Їдь до зеленого маркера на іншому кінці міста.";
+      showToast("ПОСИЛКИ ДОСТАВЛЕНО. ЧАС ЇХАТИ НА ЗМІНУ!");
+      return;
+    }
+    showToast(`ПОСИЛКУ ДОСТАВЛЕНО! +25 СЕК · СЕРІЯ ×${streak}`);
+    const next = nextDelivery();
+    document.getElementById("objectiveTitle").textContent =
+      `НАСТУПНА ЦІЛЬ: ${next.name}`;
+    document.getElementById("objectiveText").textContent =
+      `${next.sub} · нова адреса вже на мапі!`;
+  }
+  const next = deliveries[0];
+  if (next) {
+    const route = cityRoute(player, next);
+    document.getElementById("objectiveText").textContent =
+      `${next.sub} · ${routeHeading(route)} · ${Math.round(routeDistance(route))} м`;
+  } else if (courierToCafe) {
+    const dist = Math.hypot(
+      player.x - cafeDestination.x,
+      player.y - cafeDestination.y,
+    );
+    document.getElementById("objectiveText").textContent =
+      `Твоя зміна чекає · До VR-кафе ${Math.round(dist)} м`;
+    if (dist < 92) {
+      courierToCafe = false;
+      running = false;
+      showToast("ДО КАФЕ ДІСТАЛИСЯ!");
+      setTimeout(showCafeCutscene, 700);
+      return;
+    }
+  }
+  document.getElementById("timer").textContent = formatTime(time);
+  document.getElementById("score").textContent = String(score).padStart(4, "0");
+  document.getElementById("speedValue").textContent = Math.round(
+    Math.hypot(player.vx, player.vy) * 0.21,
+  );
+  document.getElementById("boostMeter").style.transform =
+    `scaleX(${player.boostCd ? 1 - player.boostCd / 2 : 1})`;
+  if (toastTimer > 0) {
+    toastTimer -= dt;
+    if (toastTimer <= 0)
+      document.getElementById("toast").classList.remove("show");
+  }
+}
+let loopFrame = 0;
+function scheduleLoop() {
+  if (!loopFrame && running && !paused) loopFrame = requestAnimationFrame(loop);
+}
+function loop(now) {
+  loopFrame = 0;
+  if (!running || paused) return;
+  let dt = Math.min((now - last) / 1000, 0.04);
+  last = now;
+  const t = now / 1000;
+  update(dt, t);
+  drawWorld(t);
+  drawMini();
+  scheduleLoop();
+}
+
+
+/* Source: js/08-controls.js */
+function pollGamepad() {
+    const pad = [...(navigator.getGamepads?.() || [])].find(Boolean);
+    gamepadMoveX = pad && Math.abs(pad.axes[0] || 0) > 0.18 ? pad.axes[0] : 0;
+    gamepadMoveY = pad && Math.abs(pad.axes[1] || 0) > 0.18 ? pad.axes[1] : 0;
+    if (pad) {
+      gamepadMoveX = clamp(
+        gamepadMoveX +
+          (pad.buttons[15]?.pressed ? 1 : 0) -
+          (pad.buttons[14]?.pressed ? 1 : 0),
+        -1,
+        1,
+      );
+      gamepadMoveY = clamp(
+        gamepadMoveY +
+          (pad.buttons[13]?.pressed ? 1 : 0) -
+          (pad.buttons[12]?.pressed ? 1 : 0),
+        -1,
+        1,
+      );
+    }
+    const space = !!pad?.buttons[0]?.pressed,
+      dash = !!pad?.buttons[1]?.pressed,
+      interact = !!pad?.buttons[2]?.pressed;
+    if (space && !padSpaceWas) boostPressed = true;
+    if (dash && !padDashWas) vrDashPressed = true;
+    if (interact && !padInteractWas) interactPressed = true;
+    padSpaceWas = space;
+    padDashWas = dash;
+    padInteractWas = interact;
+    for (const [code, pressed] of [
+      ["Space", space],
+      ["ShiftLeft", dash],
+      ["KeyE", interact],
+    ]) {
+      if (pressed) gamepadKeys.add(code);
+      else gamepadKeys.delete(code);
+    }
+  }
+  function normalizeKey(e) {
+    const code = e.code || "";
+    if (
+      code === "Escape" ||
+      code === "Space" ||
+      code.startsWith("Arrow") ||
+      code.startsWith("Shift") ||
+      ["KeyW", "KeyA", "KeyS", "KeyD", "KeyE", "KeyF", "Enter"].includes(code)
+    )
+      return code;
+    const k = (e.key || "").toLowerCase();
+    return (
+      {
+        w: "KeyW",
+        a: "KeyA",
+        s: "KeyS",
+        d: "KeyD",
+        e: "KeyE",
+        f: "KeyF",
+        " ": "Space",
+        spacebar: "Space",
+        arrowup: "ArrowUp",
+        arrowdown: "ArrowDown",
+        arrowleft: "ArrowLeft",
+        arrowright: "ArrowRight",
+        escape: "Escape",
+        shift: "ShiftLeft",
+        enter: "Enter",
+      }[k] || code
+    );
+  }
+  function actionKey(code) {
+    if (code === "Escape") {
+      togglePause();
+      return;
+    }
+    if (
+      code === "Space" ||
+      code.startsWith("Arrow") ||
+      ["KeyW", "KeyA", "KeyS", "KeyD"].includes(code)
+    )
+      keys.add(code);
+  }
+  canvas.addEventListener("pointerdown", (e) => {
+    focusGame();
+    if (stage === 6) {
+      keys.add("Space");
+      boostPressed = true;
+      e.preventDefault();
+    } else if (stage === 2 && e.button === 0) {
+      interactPressed = true;
+      e.preventDefault();
+    }
+  });
+  ["pointerup", "pointercancel", "pointerleave"].forEach((ev) =>
+    canvas.addEventListener(ev, () => keys.delete("Space")),
+  );
+  addEventListener(
+    "keydown",
+    (e) => {
+      const code = normalizeKey(e),
+        isInteract = ["KeyE", "KeyF", "Enter"].includes(code);
+      if (
+        [
+          "ArrowUp",
+          "ArrowDown",
+          "ArrowLeft",
+          "ArrowRight",
+          "Space",
+          "KeyW",
+          "KeyA",
+          "KeyS",
+          "KeyD",
+        ].includes(code) ||
+        isInteract
+      )
+        e.preventDefault();
+      if (e.repeat && code === "Escape") return;
+      if (code === "Space" && !e.repeat) boostPressed = true;
+      if ((stage === 6 || stage === 7) && code.startsWith("Shift") && !e.repeat)
+        vrDashPressed = true;
+      if (
+        (stage === 2 && !e.repeat && isInteract) ||
+        (stage === 5 &&
+          !e.repeat &&
+          (code === "KeyE" ||
+            (trainingPhase === "escape" && code === "Enter"))) ||
+        ((stage === 6 || stage === 8) && !e.repeat && code === "KeyE")
+      )
+        interactPressed = true;
+      if (isInteract) keys.add(code);
+      actionKey(code);
+    },
+    { capture: true, passive: false },
+  );
+  addEventListener("keyup", (e) => keys.delete(normalizeKey(e)), {
+    capture: true,
+  });
+  addEventListener("blur", () => {
+    keys.clear();
+    gamepadKeys.clear();
+    boostPressed = false;
+    interactPressed = false;
+    vrDashPressed = false;
+    gamepadMoveX = gamepadMoveY = 0;
+    padSpaceWas = padInteractWas = padDashWas = false;
+  });
+  document.getElementById("startBtn").onclick = start;
+  document.getElementById("continueCampaignBtn").onclick = continueCampaign;
+  document.getElementById("startLevel2Btn").onclick = enterCafe;
+  document.getElementById("startLevel3Btn").onclick = startLevel3;
+  document.getElementById("startLevel4Btn").onclick = startLevel4;
+  document.getElementById("startLevel4bBtn").onclick = startCornfieldLevel;
+  document.getElementById("startLevel5Btn").onclick = showVrCutscene;
+  document.getElementById("startLevel6Btn").onclick = startForestLevel;
+  document.getElementById("startLevel7Btn").onclick = showGermanyTransition;
+  document.getElementById("skipLevelBtn").onclick = skipCourierLevel;
+  document.getElementById("resumeBtn").onclick = togglePause;
+  document.getElementById("soundBtn").onclick = () => {
+    soundOn = !soundOn;
+    document
+      .getElementById("soundBtn")
+      .setAttribute("aria-pressed", String(soundOn));
+    document
+      .getElementById("soundBtn")
+      .setAttribute("aria-label", soundOn ? "Вимкнути звук" : "Увімкнути звук");
+    document.getElementById("soundBtn").textContent =
+      `♫ ЗВУК: ${soundOn ? "УВІМК." : "ВИМК."}`;
+    if (soundOn) audioStart();
+    else if ("speechSynthesis" in window) speechSynthesis.cancel();
+  };
+  document.getElementById("fullscreenBtn").onclick = async () => {
+    try {
+      if (!document.fullscreenElement)
+        await document.getElementById("game").requestFullscreen();
+      else await document.exitFullscreen();
+    } catch {
+      showToast("Повноекранний режим недоступний у цьому браузері");
+    }
+  };
+  function boot() {
+    nextDelivery();
+    drawWorld(0);
+    drawMini();
+    document.getElementById("objectiveTitle").textContent =
+      `МІСІЯ: ${deliveries[0].name}`;
+    document.getElementById("objectiveText").textContent =
+      "Кожна доставка додає +25 секунд. Тримай маршрут!";
+    setupContinueButton();
+  }
+  boot();
 })();
