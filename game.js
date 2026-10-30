@@ -2135,14 +2135,19 @@ function updateForest(dt, t) {
     forest.cutProgress = 0;
     forest.x = 1300;
     forest.y = 450;
+    // Give the player a quiet interaction window at the fence. Pursuers
+    // otherwise keep knocking them away while they hold the cut key.
+    forest.enemies = [];
+    forest.hazards.forEach((hazard) => (hazard.armed = false));
+    forest.invuln = 2.5;
     showToast("ЗНАЙДИ КУСАЧКИ · УТРИМУЙ E БІЛЯ ДРОТУ");
   }
   if (forest.phase === "cut") {
     const close = Math.hypot(forest.x - 1300, forest.y - 450) < 120;
     if (close && keyDown("KeyE"))
-      forest.cutProgress = Math.min(2.4, forest.cutProgress + dt);
+      forest.cutProgress = Math.min(1.5, forest.cutProgress + dt);
     else forest.cutProgress = Math.max(0, forest.cutProgress - dt * 0.55);
-    if (forest.cutProgress >= 2.4) {
+    if (forest.cutProgress >= 1.5) {
       forest.phase = "cutDone";
       forest.ending = 0.01;
       forest.enemies = [];
@@ -2370,7 +2375,7 @@ function drawForest(t) {
     ctx.fillStyle = "#293a34";
     rounded(ctx, W / 2 - 140, H - 57, 280, 9, 4);
     ctx.fillStyle = "#ffd269";
-    rounded(ctx, W / 2 - 137, H - 54, (274 * forest.cutProgress) / 2.4, 4, 2);
+    rounded(ctx, W / 2 - 137, H - 54, (274 * forest.cutProgress) / 1.5, 4, 2);
   } else if (forest.phase === "run") {
     const goalDist = Math.hypot(forest.x - target.x, forest.y - target.y);
     if (goalDist < 210) {
