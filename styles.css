@@ -933,3 +933,38 @@ summary:focus-visible {
   padding: 5px 8px;
   font-size: 10px;
 }
+
+/* Compact objective and feedback panels: size them to their text. */
+.objective {
+  width: fit-content;
+  max-width: min(38%, 440px);
+  padding: 9px 12px;
+}
+.objective b {
+  font-size: clamp(14px, 1.2vw, 17px);
+  margin-bottom: 2px;
+}
+.objective small {
+  font-size: clamp(11px, 0.9vw, 13px);
+  line-height: 1.3;
+}
+.hint {
+  width: fit-content;
+  max-width: min(58%, 620px);
+  padding: 7px 10px;
+  font-size: clamp(11px, 0.9vw, 13px);
+  line-height: 1.3;
+}
+.toast {
+  width: fit-content;
+  max-width: min(76%, 520px);
+  padding: 8px 12px;
+  font-size: clamp(12px, 1vw, 14px);
+  line-height: 1.3;
+}
+#game.training-mode .toast,
+#game.arcade-mode .toast,
+#game.forest-mode .toast {
+  max-width: min(76%, 520px);
+  padding: 8px 12px;
+}
