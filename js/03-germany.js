@@ -6,7 +6,6 @@ function germanyGoal() {
       : germany.meet;
 }
 function showGermanyTransition() {
-  saveCampaignChapter(8);
   const layer = document.getElementById("intro");
   layer.classList.remove("hidden");
   layer.innerHTML = `<section class="card"><div class="eyebrow">РІВЕНЬ 7 · НІЧНЕ МІСТО · НІМЕЧЧИНА</div><h1>Новий кордон.<br><em>Челендж є. Цінників нема.</em></h1><p>Герой влаштовує TikTok-челендж: назбирати 12 пляшок і здати їх у Lidl Pfand. Насправді він дуже багатий і цінників не дивиться — це чисто контент. Колишня з Росії тим часом лишила дев’ять голосових; «кста, не зараз».</p><div class="mission"><span>🍾 12 пляшок × €0,25 = €3,00</span><span>♻️ Рюкзак: максимум 2 · Lidl Pfand</span><span>🛒 Обери 3 товари без цінників</span><span>💛 Знайди Жінку Непальця</span></div><button id="startGermanyBtn">ШУКАТИ PFAND　→</button><button id="germanyMenuBtn" class="secondary">ДО ГОЛОВНОГО МЕНЮ</button></section>`;
@@ -14,7 +13,6 @@ function showGermanyTransition() {
   document.getElementById("germanyMenuBtn").onclick = () => location.reload();
 }
 function startGermanyLevel() {
-  saveCampaignChapter(8);
   focusGame();
   stage = 8;
   gameEnded = false;

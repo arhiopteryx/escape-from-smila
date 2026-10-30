@@ -1,5 +1,4 @@
 function startLevel3() {
-  saveCampaignChapter(3);
   focusGame();
   document
     .getElementById("game")
@@ -59,7 +58,6 @@ let vrWave = 1,
   vrDashCooldown = 0,
   vrStars = [];
 function showVrCutscene() {
-  saveCampaignChapter(6);
   running = false;
   paused = false;
   const layer = document.getElementById("intro");
@@ -1082,7 +1080,6 @@ function forestGoal() {
     : { x: 1300, y: 450 };
 }
 function startForestLevel() {
-  saveCampaignChapter(7);
   focusGame();
   document
     .getElementById("game")

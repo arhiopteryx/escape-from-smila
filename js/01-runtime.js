@@ -229,57 +229,6 @@
         ? "ЇДЬ УНИЗ"
         : "ЇДЬ УГОРУ";
   }
-  const campaignChapterNames = [
-    "",
-    "Кур’єрський рейд",
-    "VR-кафе",
-    "Нічна погоня",
-    "Санвузол",
-    "Кукурудзяне поле",
-    "VR-завод",
-    "Лісова втеча",
-    "Pfand-квест",
-  ];
-  let campaignChapter = 0;
-  try {
-    const saved = Number(localStorage.getItem("escapeSmila.chapter"));
-    if (saved) campaignChapter = Math.max(1, Math.min(8, saved));
-  } catch {}
-  function saveCampaignChapter(chapter) {
-    campaignChapter = clamp(chapter, 1, 8);
-    try {
-      localStorage.setItem("escapeSmila.chapter", String(campaignChapter));
-    } catch {}
-  }
-  function continueCampaign() {
-    switch (campaignChapter) {
-      case 2:
-        return enterCafe();
-      case 3:
-        return startLevel3();
-      case 4:
-        return startLevel4();
-      case 5:
-        return startCornfieldLevel();
-      case 6:
-        return showVrCutscene();
-      case 7:
-        return startForestLevel();
-      case 8:
-        return showGermanyTransition();
-      default:
-        return start();
-    }
-  }
-  function setupContinueButton() {
-    const button = document.getElementById("continueCampaignBtn");
-    if (button) {
-      button.hidden = !campaignChapter;
-      if (campaignChapter)
-        button.textContent =
-          "ПРОДОВЖИТИ · " + campaignChapterNames[campaignChapter];
-    }
-  }
   const keys = new Set(),
     gamepadKeys = new Set();
   let gamepadMoveX = 0,
@@ -504,7 +453,6 @@
     }, 2150);
   }
   function start() {
-    saveCampaignChapter(1);
     focusGame();
     keys.clear();
     boostPressed = false;
@@ -568,7 +516,6 @@
     fieldSpawnTimer = 0.6,
     fieldBackdrop = null;
   function startLevel4() {
-    saveCampaignChapter(4);
     focusGame();
     document.getElementById("toast").classList.remove("show");
     toastTimer = 0;
@@ -627,7 +574,6 @@
     scheduleLoop();
   }
   function startCornfieldRun() {
-    saveCampaignChapter(5);
     document.getElementById("toast").classList.remove("show");
     toastTimer = 0;
     stage = 9;
@@ -669,7 +615,6 @@
     last = performance.now();
   }
   function startCornfieldLevel() {
-    saveCampaignChapter(5);
     focusGame();
     gameEnded = false;
     running = true;

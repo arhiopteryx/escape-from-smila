@@ -144,15 +144,6 @@
     padSpaceWas = padInteractWas = padDashWas = false;
   });
   document.getElementById("startBtn").onclick = start;
-  document.getElementById("continueCampaignBtn").onclick = continueCampaign;
-  document.getElementById("startLevel2Btn").onclick = enterCafe;
-  document.getElementById("startLevel3Btn").onclick = startLevel3;
-  document.getElementById("startLevel4Btn").onclick = startLevel4;
-  document.getElementById("startLevel4bBtn").onclick = startCornfieldLevel;
-  document.getElementById("startLevel5Btn").onclick = showVrCutscene;
-  document.getElementById("startLevel6Btn").onclick = startForestLevel;
-  document.getElementById("startLevel7Btn").onclick = showGermanyTransition;
-  document.getElementById("skipLevelBtn").onclick = skipCourierLevel;
   document.getElementById("resumeBtn").onclick = togglePause;
   document.getElementById("soundBtn").onclick = () => {
     soundOn = !soundOn;
@@ -184,7 +175,6 @@
       `МІСІЯ: ${deliveries[0].name}`;
     document.getElementById("objectiveText").textContent =
       `Кожна доставка додає +${DELIVERY_TIME_BONUS} секунд. Достав ${DELIVERY_GOAL} посилок!`;
-    setupContinueButton();
   }
   boot();
 })();

@@ -15,7 +15,6 @@ function showCafeToChaseCutscene() {
   document.getElementById("beginChase").onclick = startLevel3;
 }
 function enterCafe() {
-  saveCampaignChapter(2);
   focusGame();
   document
     .getElementById("game")
@@ -54,9 +53,6 @@ function enterCafe() {
   showToast("ЗАПАМ’ЯТАЙ СТРАВУ · НЕСИ ЇЇ ДО ВІРНОГО СТОЛИКА");
   last = performance.now();
   scheduleLoop();
-}
-function skipCourierLevel() {
-  showCafeCutscene();
 }
 function formatTime(s) {
   let v = Math.max(0, Math.ceil(s));

@@ -231,57 +231,6 @@
         ? "ЇДЬ УНИЗ"
         : "ЇДЬ УГОРУ";
   }
-  const campaignChapterNames = [
-    "",
-    "Кур’єрський рейд",
-    "VR-кафе",
-    "Нічна погоня",
-    "Санвузол",
-    "Кукурудзяне поле",
-    "VR-завод",
-    "Лісова втеча",
-    "Pfand-квест",
-  ];
-  let campaignChapter = 0;
-  try {
-    const saved = Number(localStorage.getItem("escapeSmila.chapter"));
-    if (saved) campaignChapter = Math.max(1, Math.min(8, saved));
-  } catch {}
-  function saveCampaignChapter(chapter) {
-    campaignChapter = clamp(chapter, 1, 8);
-    try {
-      localStorage.setItem("escapeSmila.chapter", String(campaignChapter));
-    } catch {}
-  }
-  function continueCampaign() {
-    switch (campaignChapter) {
-      case 2:
-        return enterCafe();
-      case 3:
-        return startLevel3();
-      case 4:
-        return startLevel4();
-      case 5:
-        return startCornfieldLevel();
-      case 6:
-        return showVrCutscene();
-      case 7:
-        return startForestLevel();
-      case 8:
-        return showGermanyTransition();
-      default:
-        return start();
-    }
-  }
-  function setupContinueButton() {
-    const button = document.getElementById("continueCampaignBtn");
-    if (button) {
-      button.hidden = !campaignChapter;
-      if (campaignChapter)
-        button.textContent =
-          "ПРОДОВЖИТИ · " + campaignChapterNames[campaignChapter];
-    }
-  }
   const keys = new Set(),
     gamepadKeys = new Set();
   let gamepadMoveX = 0,
@@ -506,7 +455,6 @@
     }, 2150);
   }
   function start() {
-    saveCampaignChapter(1);
     focusGame();
     keys.clear();
     boostPressed = false;
@@ -570,7 +518,6 @@
     fieldSpawnTimer = 0.6,
     fieldBackdrop = null;
   function startLevel4() {
-    saveCampaignChapter(4);
     focusGame();
     document.getElementById("toast").classList.remove("show");
     toastTimer = 0;
@@ -629,7 +576,6 @@
     scheduleLoop();
   }
   function startCornfieldRun() {
-    saveCampaignChapter(5);
     document.getElementById("toast").classList.remove("show");
     toastTimer = 0;
     stage = 9;
@@ -671,7 +617,6 @@
     last = performance.now();
   }
   function startCornfieldLevel() {
-    saveCampaignChapter(5);
     focusGame();
     gameEnded = false;
     running = true;
@@ -739,7 +684,6 @@
 
 /* Source: js/02-early-levels.js */
 function startLevel3() {
-  saveCampaignChapter(3);
   focusGame();
   document
     .getElementById("game")
@@ -799,7 +743,6 @@ let vrWave = 1,
   vrDashCooldown = 0,
   vrStars = [];
 function showVrCutscene() {
-  saveCampaignChapter(6);
   running = false;
   paused = false;
   const layer = document.getElementById("intro");
@@ -1822,7 +1765,6 @@ function forestGoal() {
     : { x: 1300, y: 450 };
 }
 function startForestLevel() {
-  saveCampaignChapter(7);
   focusGame();
   document
     .getElementById("game")
@@ -2715,7 +2657,6 @@ function germanyGoal() {
       : germany.meet;
 }
 function showGermanyTransition() {
-  saveCampaignChapter(8);
   const layer = document.getElementById("intro");
   layer.classList.remove("hidden");
   layer.innerHTML = `<section class="card"><div class="eyebrow">РІВЕНЬ 7 · НІЧНЕ МІСТО · НІМЕЧЧИНА</div><h1>Новий кордон.<br><em>Челендж є. Цінників нема.</em></h1><p>Герой влаштовує TikTok-челендж: назбирати 12 пляшок і здати їх у Lidl Pfand. Насправді він дуже багатий і цінників не дивиться — це чисто контент. Колишня з Росії тим часом лишила дев’ять голосових; «кста, не зараз».</p><div class="mission"><span>🍾 12 пляшок × €0,25 = €3,00</span><span>♻️ Рюкзак: максимум 2 · Lidl Pfand</span><span>🛒 Обери 3 товари без цінників</span><span>💛 Знайди Жінку Непальця</span></div><button id="startGermanyBtn">ШУКАТИ PFAND　→</button><button id="germanyMenuBtn" class="secondary">ДО ГОЛОВНОГО МЕНЮ</button></section>`;
@@ -2723,7 +2664,6 @@ function showGermanyTransition() {
   document.getElementById("germanyMenuBtn").onclick = () => location.reload();
 }
 function startGermanyLevel() {
-  saveCampaignChapter(8);
   focusGame();
   stage = 8;
   gameEnded = false;
@@ -4082,7 +4022,6 @@ function showCafeToChaseCutscene() {
   document.getElementById("beginChase").onclick = startLevel3;
 }
 function enterCafe() {
-  saveCampaignChapter(2);
   focusGame();
   document
     .getElementById("game")
@@ -4121,9 +4060,6 @@ function enterCafe() {
   showToast("ЗАПАМ’ЯТАЙ СТРАВУ · НЕСИ ЇЇ ДО ВІРНОГО СТОЛИКА");
   last = performance.now();
   scheduleLoop();
-}
-function skipCourierLevel() {
-  showCafeCutscene();
 }
 function formatTime(s) {
   let v = Math.max(0, Math.ceil(s));
@@ -7524,15 +7460,6 @@ function pollGamepad() {
     padSpaceWas = padInteractWas = padDashWas = false;
   });
   document.getElementById("startBtn").onclick = start;
-  document.getElementById("continueCampaignBtn").onclick = continueCampaign;
-  document.getElementById("startLevel2Btn").onclick = enterCafe;
-  document.getElementById("startLevel3Btn").onclick = startLevel3;
-  document.getElementById("startLevel4Btn").onclick = startLevel4;
-  document.getElementById("startLevel4bBtn").onclick = startCornfieldLevel;
-  document.getElementById("startLevel5Btn").onclick = showVrCutscene;
-  document.getElementById("startLevel6Btn").onclick = startForestLevel;
-  document.getElementById("startLevel7Btn").onclick = showGermanyTransition;
-  document.getElementById("skipLevelBtn").onclick = skipCourierLevel;
   document.getElementById("resumeBtn").onclick = togglePause;
   document.getElementById("soundBtn").onclick = () => {
     soundOn = !soundOn;
@@ -7564,7 +7491,6 @@ function pollGamepad() {
       `МІСІЯ: ${deliveries[0].name}`;
     document.getElementById("objectiveText").textContent =
       `Кожна доставка додає +${DELIVERY_TIME_BONUS} секунд. Достав ${DELIVERY_GOAL} посилок!`;
-    setupContinueButton();
   }
   boot();
 })();
