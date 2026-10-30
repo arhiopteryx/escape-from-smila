@@ -1,5 +1,5 @@
 (()=>{'use strict';
-const DPR=Math.max(1,Math.min(2,window.devicePixelRatio||1));const canvas=document.getElementById('world'),mini=document.getElementById('minimap'),W=1280,H=800,MINI_W=240,MINI_H=150;canvas.width=W*DPR;canvas.height=H*DPR;mini.width=MINI_W*DPR;mini.height=MINI_H*DPR;canvas.tabIndex=0;const focusGame=()=>setTimeout(()=>canvas.focus({preventScroll:true}),40);const ctx=canvas.getContext('2d'),mctx=mini.getContext('2d');ctx.setTransform(DPR,0,0,DPR,0,0);mctx.setTransform(DPR,0,0,DPR,0,0);const world={w:3600,h:2800};
+const DPR=Math.max(1,Math.min(2,window.devicePixelRatio||1));const canvas=document.getElementById('world'),mini=document.getElementById('minimap'),W=1280,H=800,MINI_W=240,MINI_H=150;canvas.width=W*DPR;canvas.height=H*DPR;mini.width=MINI_W*DPR;mini.height=MINI_H*DPR;canvas.tabIndex=0;const focusGame=()=>setTimeout(()=>canvas.focus({preventScroll:true}),40);let ctx=canvas.getContext('2d');const mctx=mini.getContext('2d');ctx.setTransform(DPR,0,0,DPR,0,0);mctx.setTransform(DPR,0,0,DPR,0,0);const world={w:3600,h:2800};
 const roadW=188,roadsX=[420,1080,1740,2400,3060],roadsY=[360,1000,1640,2280];
 const player={x:260,y:380,vx:0,vy:0,dir:0,r:24,speed:0,boost:0,boostCd:0,bump:0};
 const stopPool=[
