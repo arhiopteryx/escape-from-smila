@@ -215,20 +215,32 @@ function drawTrainingStage(t) {
     }
   }
   drawTrainingAvatar(player.x, player.y, t);
-  ctx.fillStyle = "#101923eF";
-  rounded(ctx, 18, 14, 252, 48, 9);
-  ctx.fillStyle = "#f4e7ca";
-  ctx.font = "bold 13px Arial";
-  ctx.textAlign = "left";
-  ctx.fillText("04A · ЩІТКА → 3 КАБІНКИ", 30, 34);
-  ctx.fillStyle = "#d8e1d5";
-  ctx.font = "bold 11px Arial";
   const cleanN = toiletStalls.filter((q) => q.progress >= 0.995).length;
-  ctx.fillText(
-    `${trainingPhase === "brush_pickup" ? "1 · ВЗЯТИ ЩІТКУ" : trainingPhase === "brush_teeth" ? "2 · ПОЧИСТИТИ ЗУБИ" : trainingPhase === "clean" ? `3 · КАБІНКИ ${cleanN}/3` : trainingPhase === "return_brush" ? "4 · ПОВЕРНУТИ ЩІТКУ" : "5 · ВИЙТИ"}  ·  ВІЗИТИ ${toiletGuestVisits}/7`,
-    30,
-    51,
-  );
+  const phaseLabel =
+    trainingPhase === "brush_pickup"
+      ? "ВЗЯТИ ЩІТКУ"
+      : trainingPhase === "brush_teeth"
+        ? "ПОЧИСТИТИ ЗУБИ"
+        : trainingPhase === "clean"
+          ? `КАБІНКИ ${cleanN}/3`
+          : trainingPhase === "return_brush"
+            ? "ПОВЕРНУТИ ЩІТКУ"
+            : "ВИХІД";
+  const statusLine = `${phaseLabel} · ВІЗИТИ ${toiletGuestVisits}/7`;
+  ctx.font = "bold 11px Arial";
+  const titleWidth = ctx.measureText("САНВУЗОЛ · ЩІТКА → 3 КАБІНКИ").width;
+  ctx.font = "bold 9px Arial";
+  const statusWidth = ctx.measureText(statusLine).width;
+  const hudWidth = Math.ceil(Math.max(titleWidth, statusWidth) + 18);
+  ctx.fillStyle = "#101923eF";
+  rounded(ctx, 18, 14, hudWidth, 42, 7);
+  ctx.fillStyle = "#f4e7ca";
+  ctx.font = "bold 11px Arial";
+  ctx.textAlign = "left";
+  ctx.fillText("САНВУЗОЛ · ЩІТКА → 3 КАБІНКИ", 27, 31);
+  ctx.fillStyle = "#d8e1d5";
+  ctx.font = "bold 9px Arial";
+  ctx.fillText(statusLine, 27, 46);
   if (
     trainingPhase === "brush_pickup" &&
     Math.hypot(player.x - toothbrush.x, player.y - toothbrush.y) < 125
