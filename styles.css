@@ -83,3 +83,5 @@ button{touch-action:manipulation;min-height:44px}button:focus-visible,summary:fo
 @media(max-height:450px) and (orientation:landscape){.touch{bottom:2%;gap:8px}.touch-stick{width:82px;height:82px}.touch-stick span{width:32px;height:32px}.touch-actions{gap:4px}.touch-actions button{min-height:36px;padding:6px 9px;font-size:10px}}
 
 #world:focus{outline:none}
+
+#game.training-mode .objective{display:none!important}#game.training-mode .hint{left:50%;transform:translateX(-50%);bottom:2.5%;max-width:90%;font-size:clamp(12px,1.2vw,16px);line-height:1.35;text-align:center;background:#101923ef;border:1px solid #ffffff55;padding:10px 16px;border-radius:10px;z-index:6}#game.training-mode .toast{top:14%;max-width:min(90vw,680px);white-space:normal;line-height:1.35;z-index:8}
