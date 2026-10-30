@@ -72,3 +72,14 @@ button{touch-action:manipulation;min-height:44px}button:focus-visible,summary:fo
 @media(max-width:700px){.toast{bottom:23%;font-size:12px;padding:9px 13px}}
 
 .hint{transition:opacity .6s,transform .6s}.hint.hint-fade{opacity:0;transform:translateY(8px);pointer-events:none}
+/* Analog mobile movement and cleaner action clusters. */
+.touch{display:none;align-items:flex-end;gap:14px;left:2.5%;bottom:3%;pointer-events:auto;z-index:5}
+.touch-stick{width:116px;height:116px;border-radius:50%;position:relative;touch-action:none;background:radial-gradient(circle,#d8eee633 0 34%,#12202bbb 36% 68%,#d8eee633 70% 73%,#0d1822d9 76%);border:1px solid #d9fff047;box-shadow:0 5px 18px #0008;display:grid;place-items:center}
+.touch-stick:after{content:'РУХ';position:absolute;bottom:7px;font-size:8px;letter-spacing:1px;color:#e2eee5aa;font-weight:800}
+.touch-stick span{display:block;width:42px;height:42px;border-radius:50%;background:linear-gradient(145deg,#e5f2df,#78cfc1);border:2px solid #fff9;box-shadow:0 3px 9px #0008;transform:translate(0,0);pointer-events:none}
+.touch-actions{display:flex;flex-direction:column;align-items:flex-start;gap:7px}.touch-actions button{min-height:44px;padding:9px 13px;margin:0;background:#132632e8;color:#fff;border:1px solid #ffffff3d;box-shadow:0 3px 12px #0007;font-size:12px;white-space:nowrap}.touch-actions button[data-key="Space"]{background:#f3ce6f;color:#202a30;border-color:#fff7}
+.touch-action{display:none}
+@media(max-width:700px){.touch{display:flex}.touch-stick{width:104px;height:104px}.touch-stick span{width:39px;height:39px}.hint{display:none}.sound{bottom:3%}.fullscreen{bottom:3%}.toast{bottom:26%}}
+@media(max-height:450px) and (orientation:landscape){.touch{bottom:2%;gap:8px}.touch-stick{width:82px;height:82px}.touch-stick span{width:32px;height:32px}.touch-actions{gap:4px}.touch-actions button{min-height:36px;padding:6px 9px;font-size:10px}}
+
+#world:focus{outline:none}
