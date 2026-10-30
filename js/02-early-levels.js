@@ -23,7 +23,7 @@ function startLevel3() {
   player.dir = 0;
   player.boost = 0;
   player.boostCd = 0;
-  chaseVan = { x: 1270, y: 1430, vx: 0, vy: 0 };
+  chaseVan = { x: 1270, y: 1430, vx: 0, vy: 0, routeTarget: null };
   buildChaseBackdrop();
   document.getElementById("game").classList.remove("cafe-mode");
   document.querySelector(".mapbox").style.display = "block";
