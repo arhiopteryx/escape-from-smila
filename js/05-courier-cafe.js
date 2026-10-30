@@ -64,11 +64,13 @@ function formatTime(s) {
 }
 function updateCityTraffic(dt) {
   for (const c of cars) {
-    const v =
-      (c.speed || 65) *
-      c.dir *
-      dt *
-      (stage === 3 ? 1.75 : stage === 1 ? 1.38 : 1);
+    const stagePace =
+      stage === 3
+        ? 1.75
+        : stage === 1
+          ? 1.34 + Math.min(delivered, DELIVERY_GOAL) * 0.035
+          : 1;
+    const v = (c.speed || 65) * c.dir * dt * stagePace;
     if (c.horizontal) {
       c.x += v;
       if (c.dir > 0 && c.x > world.w + 100) c.x = -100;
@@ -83,8 +85,13 @@ function updateCityTraffic(dt) {
     p.stun = Math.max(0, p.stun - dt);
     p.fleeing = Math.max(0, (p.fleeing || 0) - dt);
     if (p.stun > 0) continue;
-    const step =
-      p.speed * p.dir * dt * (stage === 3 ? 1.55 : stage === 1 ? 1.28 : 1);
+    const pedestrianPace =
+      stage === 3
+        ? 1.55
+        : stage === 1
+          ? 1.2 + Math.min(delivered, DELIVERY_GOAL) * 0.025
+          : 1;
+    const step = p.speed * p.dir * dt * pedestrianPace;
     if (p.axis === "h") {
       p.x += step;
       if (p.x < 0 || p.x > world.w) p.dir *= -1;
@@ -407,10 +414,10 @@ function drawScenery(t) {
 }
 function drawStreetLights(t) {
   const night = stage === 3,
-    minX = player.x - W * 0.62,
-    maxX = player.x + W * 0.62,
-    minY = player.y - H * 0.62,
-    maxY = player.y + H * 0.62,
+    minX = buildingBackdrop ? 0 : player.x - W * 0.62,
+    maxX = buildingBackdrop ? world.w : player.x + W * 0.62,
+    minY = buildingBackdrop ? 0 : player.y - H * 0.62,
+    maxY = buildingBackdrop ? world.h : player.y + H * 0.62,
     lamps = [];
   roadsX.forEach((roadX) => {
     for (let y = 680; y < world.h; y += 640)
@@ -1258,6 +1265,24 @@ function drawCafe(t) {
     ctx.fillStyle = "#34464c";
     ctx.fillRect(x + 31, 30, 4, 75);
   }
+  // Warm pendant lights give the dining room depth without obscuring orders.
+  for (const x of [350, 690, 1030]) {
+    ctx.strokeStyle = "#172a35";
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(x, 136);
+    ctx.lineTo(x, 168);
+    ctx.stroke();
+    const glow = ctx.createRadialGradient(x, 174, 3, x, 174, 105);
+    glow.addColorStop(0, "#ffd68a26");
+    glow.addColorStop(1, "#ffd68a00");
+    ctx.fillStyle = glow;
+    ctx.fillRect(x - 105, 169, 210, 165);
+    ctx.fillStyle = "#f3d58e";
+    rounded(ctx, x - 13, 164, 26, 12, 6);
+    ctx.fillStyle = "#fff2c4";
+    rounded(ctx, x - 8, 166, 16, 5, 3);
+  }
   for (let i = 0; i < cafeTables.length; i++) {
     const p = cafeTables[i],
       o = cafeOrders[i];
@@ -1504,6 +1529,7 @@ function buildChaseBackdrop() {
     drawGround();
     drawScenery(0);
     drawDistrict();
+    drawStreetLights(0);
     drawSmilaLandmarks(0);
     drawNeonCity(0);
     for (const x of roadsX)

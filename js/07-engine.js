@@ -410,12 +410,18 @@ function update(dt, t) {
   }
   for (const c of cars) {
     const dx = player.x - c.x,
-      dy = player.y - c.y;
-    if (Math.abs(dx) < 39 && Math.abs(dy) < 28) {
+      dy = player.y - c.y,
+      collisionX = c.horizontal ? 39 : 28,
+      collisionY = c.horizontal ? 28 : 39;
+    if (Math.abs(dx) < collisionX && Math.abs(dy) < collisionY) {
       player.x = oldx;
       player.y = oldy;
       player.vx *= -0.32;
       player.vy *= -0.32;
+      if (stage === 1 && player.bump <= 0) {
+        time = Math.max(0, time - 1.5);
+        showToast("ЗІТКНЕННЯ · −1,5 СЕКУНДИ");
+      }
       player.bump = 0.65;
       score = Math.max(0, score - 12);
       tone(120, 0.12, "sawtooth", 0.035, -45);
@@ -433,6 +439,7 @@ function update(dt, t) {
       player.vx *= 0.65;
       player.vy *= 0.65;
       player.bump = 0.65;
+      if (stage === 1) time = Math.max(0, time - 0.5);
       score = Math.max(0, score - 5);
       showToast("ОЙ! ПЕРЕПРОШУЄМО ПІШОХОДА");
       tone(180, 0.08, "triangle", 0.025, -50);
@@ -469,13 +476,14 @@ function update(dt, t) {
     delivered++;
     streak++;
     bestStreak = Math.max(bestStreak, streak);
-    time = Math.min(99, time + 25);
+    time = Math.min(DELIVERY_TIME_CAP, time + DELIVERY_TIME_BONUS);
     score += 250 + Math.round(time * 2) + Math.min(streak, 10) * 25;
     chime();
-    document.getElementById("delivered").textContent = String(delivered);
+    document.getElementById("delivered").textContent =
+      `${delivered} / ${DELIVERY_GOAL}`;
     document.getElementById("timer").textContent = formatTime(time);
     tone(740, 0.12, "triangle", 0.045, 300);
-    if (delivered >= 5) {
+    if (delivered >= DELIVERY_GOAL) {
       deliveries = [];
       courierToCafe = true;
       document.getElementById("objectiveTitle").textContent =
@@ -485,7 +493,9 @@ function update(dt, t) {
       showToast("ПОСИЛКИ ДОСТАВЛЕНО. ЧАС ЇХАТИ НА ЗМІНУ!");
       return;
     }
-    showToast(`ПОСИЛКУ ДОСТАВЛЕНО! +25 СЕК · СЕРІЯ ×${streak}`);
+    showToast(
+      `ПОСИЛКУ ДОСТАВЛЕНО! +${DELIVERY_TIME_BONUS} СЕК · СЕРІЯ ×${streak}`,
+    );
     const next = nextDelivery();
     document.getElementById("objectiveTitle").textContent =
       `НАСТУПНА ЦІЛЬ: ${next.name}`;

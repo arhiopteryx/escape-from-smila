@@ -415,6 +415,9 @@ function drawGermany(t) {
   for (const y of roadsYg) {
     ctx.fillStyle = "#8b928e";
     ctx.fillRect(0, y - 56, germany.worldW, 112);
+    ctx.fillStyle = "#c2c5b5";
+    ctx.fillRect(0, y - 58, germany.worldW, 5);
+    ctx.fillRect(0, y + 53, germany.worldW, 5);
     ctx.fillStyle = "#626b69";
     ctx.fillRect(0, y - 42, germany.worldW, 84);
     ctx.strokeStyle = "#c5b887";
@@ -429,6 +432,9 @@ function drawGermany(t) {
   for (const x of roadsXg) {
     ctx.fillStyle = "#8b928e";
     ctx.fillRect(x - 56, 0, 112, germany.worldH);
+    ctx.fillStyle = "#c2c5b5";
+    ctx.fillRect(x - 58, 0, 5, germany.worldH);
+    ctx.fillRect(x + 53, 0, 5, germany.worldH);
     ctx.fillStyle = "#626b69";
     ctx.fillRect(x - 42, 0, 84, germany.worldH);
     ctx.strokeStyle = "#c5b887";
@@ -458,6 +464,10 @@ function drawGermany(t) {
         }
       ctx.fillStyle = "#262e3a";
       ctx.fillRect(bx + 18, by + 142, 294, 12);
+      ctx.fillStyle = "#f1e5c3";
+      ctx.fillRect(bx + 14, by + 8, 302, 5);
+      ctx.fillStyle = "#343b3a";
+      ctx.fillRect(bx + 150, by + 122, 32, 43);
     }
   for (const y of roadsYg)
     for (let x = 0; x < germany.worldW; x += 190) {

@@ -21,6 +21,10 @@
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
   mctx.setTransform(DPR, 0, 0, DPR, 0, 0);
   const world = { w: 3600, h: 2800 };
+  const DELIVERY_GOAL = 7,
+    DELIVERY_START_TIME = 55,
+    DELIVERY_TIME_BONUS = 15,
+    DELIVERY_TIME_CAP = 85;
   const roadW = 188,
     roadsX = [420, 1080, 1740, 2400, 3060],
     roadsY = [360, 1000, 1640, 2280];
@@ -307,7 +311,7 @@
   let running = false,
     paused = false,
     won = false,
-    time = 60,
+    time = DELIVERY_START_TIME,
     score = 0,
     delivered = 0,
     streak = 0,
@@ -394,7 +398,7 @@
       } else if (!nearRoad(px, py) && rand() > 0.5)
         trees.push({ x: px, y: py, r: 13 + rand() * 10 });
     }
-  for (let i = 0; i < 30; i++) {
+  for (let i = 0; i < 40; i++) {
     let rx = roadsX[Math.floor(rand() * roadsX.length)],
       ry = roadsY[Math.floor(rand() * roadsY.length)];
     let horizontal = rand() > 0.5;
@@ -403,6 +407,7 @@
       y: horizontal ? ry + (rand() - 0.5) * 100 : rand() * world.h,
       horizontal,
       dir: rand() > 0.5 ? 1 : -1,
+      speed: 68 + rand() * 54,
       color: ["#d9d4bf", "#729197", "#bd755a", "#394954", "#e0b546"][
         Math.floor(rand() * 5)
       ],
@@ -415,7 +420,7 @@
       y: 130 + rand() * (world.h - 260),
       phase: rand() * 10,
     });
-  for (let i = 0; i < 74; i++) {
+  for (let i = 0; i < 88; i++) {
     const horizontal = rand() > 0.5,
       road = horizontal
         ? roadsY[Math.floor(rand() * roadsY.length)]
@@ -503,14 +508,30 @@
   function start() {
     saveCampaignChapter(1);
     focusGame();
+    keys.clear();
+    boostPressed = false;
+    interactPressed = false;
     churchEventUsed = false;
     azotEventUsed = false;
+    player.x = 260;
+    player.y = 380;
+    player.vx = 0;
+    player.vy = 0;
+    player.dir = 0;
+    player.boost = 0;
+    player.boostCd = 0;
     setHint(document.querySelector(".hint").innerHTML);
     stage = 1;
     courierToCafe = false;
     delivered = 0;
+    streak = 0;
     score = 0;
-    time = 60;
+    time = DELIVERY_START_TIME;
+    lastStop = -1;
+    nextDelivery();
+    document.getElementById("delivered").textContent =
+      `0 / ${DELIVERY_GOAL}`;
+    document.getElementById("timer").textContent = formatTime(time);
     document.getElementById("intro").classList.add("hidden");
     running = true;
     paused = false;
@@ -854,6 +875,23 @@ function buildFactoryBackdrop() {
   }
   g.fillStyle = "#34343a";
   g.fillRect(128, 185, W - 256, H - 185);
+  // Heavy roof beams and pipe runs add scale to the brick factory interior.
+  for (const y of [190, 224, 738]) {
+    g.fillStyle = "#211d25";
+    g.fillRect(128, y, W - 256, 9);
+    g.fillStyle = "#a34a50";
+    g.fillRect(128, y + 9, W - 256, 3);
+  }
+  for (const x of [260, 1018]) {
+    g.fillStyle = "#241e26";
+    g.fillRect(x, 185, 13, H - 185);
+    g.fillStyle = "#42cfc6";
+    g.fillRect(x + 4, 205, 4, H - 225);
+  }
+  g.fillStyle = "#ffb24d";
+  for (const x of [172, 1128]) {
+    g.beginPath(); g.arc(x, 242, 6, 0, Math.PI * 2); g.fill();
+  }
   for (let y = 220; y < H; y += 90) {
     g.strokeStyle = "#4a4a50";
     g.lineWidth = 2;
@@ -2232,6 +2270,21 @@ function drawForest(t) {
   ctx.setLineDash([18, 18]);
   ctx.stroke();
   ctx.setLineDash([]);
+  // Wheel ruts, scattered leaves and trail-side stones help the route stand out.
+  ctx.save();
+  ctx.globalAlpha = 0.28;
+  ctx.strokeStyle = "#745f3e";
+  ctx.lineWidth = 4;
+  for (let y = 40; y < H; y += 58) {
+    const bend = Math.sin((y + cameraY) * 0.012) * 16;
+    for (const side of [-1, 1]) {
+      ctx.beginPath();
+      ctx.moveTo(W / 2 + bend + side * 24, y);
+      ctx.lineTo(W / 2 + bend + side * 31, y + 34);
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
   for (const tree of forest.trees) {
     const sx = tree.x - cameraX,
       sy = tree.y - cameraY;
@@ -2260,6 +2313,10 @@ function drawForest(t) {
     ctx.fillStyle = "#77a94e";
     ctx.beginPath();
     ctx.arc(sx - 7 + sway, sy - 8, tree.r * 0.28, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#c6d77655";
+    ctx.beginPath();
+    ctx.arc(sx + sway - 15, sy - 16, tree.r * 0.2, 0, Math.PI * 2);
     ctx.fill();
   }
   for (const q of forest.tracks) {
@@ -3067,6 +3124,9 @@ function drawGermany(t) {
   for (const y of roadsYg) {
     ctx.fillStyle = "#8b928e";
     ctx.fillRect(0, y - 56, germany.worldW, 112);
+    ctx.fillStyle = "#c2c5b5";
+    ctx.fillRect(0, y - 58, germany.worldW, 5);
+    ctx.fillRect(0, y + 53, germany.worldW, 5);
     ctx.fillStyle = "#626b69";
     ctx.fillRect(0, y - 42, germany.worldW, 84);
     ctx.strokeStyle = "#c5b887";
@@ -3081,6 +3141,9 @@ function drawGermany(t) {
   for (const x of roadsXg) {
     ctx.fillStyle = "#8b928e";
     ctx.fillRect(x - 56, 0, 112, germany.worldH);
+    ctx.fillStyle = "#c2c5b5";
+    ctx.fillRect(x - 58, 0, 5, germany.worldH);
+    ctx.fillRect(x + 53, 0, 5, germany.worldH);
     ctx.fillStyle = "#626b69";
     ctx.fillRect(x - 42, 0, 84, germany.worldH);
     ctx.strokeStyle = "#c5b887";
@@ -3110,6 +3173,10 @@ function drawGermany(t) {
         }
       ctx.fillStyle = "#262e3a";
       ctx.fillRect(bx + 18, by + 142, 294, 12);
+      ctx.fillStyle = "#f1e5c3";
+      ctx.fillRect(bx + 14, by + 8, 302, 5);
+      ctx.fillStyle = "#343b3a";
+      ctx.fillRect(bx + 150, by + 122, 32, 43);
     }
   for (const y of roadsYg)
     for (let x = 0; x < germany.worldW; x += 190) {
@@ -4054,11 +4121,13 @@ function formatTime(s) {
 }
 function updateCityTraffic(dt) {
   for (const c of cars) {
-    const v =
-      (c.speed || 65) *
-      c.dir *
-      dt *
-      (stage === 3 ? 1.75 : stage === 1 ? 1.38 : 1);
+    const stagePace =
+      stage === 3
+        ? 1.75
+        : stage === 1
+          ? 1.34 + Math.min(delivered, DELIVERY_GOAL) * 0.035
+          : 1;
+    const v = (c.speed || 65) * c.dir * dt * stagePace;
     if (c.horizontal) {
       c.x += v;
       if (c.dir > 0 && c.x > world.w + 100) c.x = -100;
@@ -4073,8 +4142,13 @@ function updateCityTraffic(dt) {
     p.stun = Math.max(0, p.stun - dt);
     p.fleeing = Math.max(0, (p.fleeing || 0) - dt);
     if (p.stun > 0) continue;
-    const step =
-      p.speed * p.dir * dt * (stage === 3 ? 1.55 : stage === 1 ? 1.28 : 1);
+    const pedestrianPace =
+      stage === 3
+        ? 1.55
+        : stage === 1
+          ? 1.2 + Math.min(delivered, DELIVERY_GOAL) * 0.025
+          : 1;
+    const step = p.speed * p.dir * dt * pedestrianPace;
     if (p.axis === "h") {
       p.x += step;
       if (p.x < 0 || p.x > world.w) p.dir *= -1;
@@ -4397,10 +4471,10 @@ function drawScenery(t) {
 }
 function drawStreetLights(t) {
   const night = stage === 3,
-    minX = player.x - W * 0.62,
-    maxX = player.x + W * 0.62,
-    minY = player.y - H * 0.62,
-    maxY = player.y + H * 0.62,
+    minX = buildingBackdrop ? 0 : player.x - W * 0.62,
+    maxX = buildingBackdrop ? world.w : player.x + W * 0.62,
+    minY = buildingBackdrop ? 0 : player.y - H * 0.62,
+    maxY = buildingBackdrop ? world.h : player.y + H * 0.62,
     lamps = [];
   roadsX.forEach((roadX) => {
     for (let y = 680; y < world.h; y += 640)
@@ -5248,6 +5322,24 @@ function drawCafe(t) {
     ctx.fillStyle = "#34464c";
     ctx.fillRect(x + 31, 30, 4, 75);
   }
+  // Warm pendant lights give the dining room depth without obscuring orders.
+  for (const x of [350, 690, 1030]) {
+    ctx.strokeStyle = "#172a35";
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(x, 136);
+    ctx.lineTo(x, 168);
+    ctx.stroke();
+    const glow = ctx.createRadialGradient(x, 174, 3, x, 174, 105);
+    glow.addColorStop(0, "#ffd68a26");
+    glow.addColorStop(1, "#ffd68a00");
+    ctx.fillStyle = glow;
+    ctx.fillRect(x - 105, 169, 210, 165);
+    ctx.fillStyle = "#f3d58e";
+    rounded(ctx, x - 13, 164, 26, 12, 6);
+    ctx.fillStyle = "#fff2c4";
+    rounded(ctx, x - 8, 166, 16, 5, 3);
+  }
   for (let i = 0; i < cafeTables.length; i++) {
     const p = cafeTables[i],
       o = cafeOrders[i];
@@ -5494,6 +5586,7 @@ function buildChaseBackdrop() {
     drawGround();
     drawScenery(0);
     drawDistrict();
+    drawStreetLights(0);
     drawSmilaLandmarks(0);
     drawNeonCity(0);
     for (const x of roadsX)
@@ -5680,6 +5773,26 @@ function drawTrainingStage(t) {
       ctx.fillStyle = (x / 48 + y / 48) % 2 ? "#c7c6ad" : "#b7bea8";
       ctx.fillRect(x, y, 45, 45);
     }
+  // Fine grout, soft ceiling pools and floor reflections clarify the tiled room.
+  ctx.save();
+  ctx.strokeStyle = "#66736b35";
+  ctx.lineWidth = 1;
+  for (let x = 16; x < W; x += 48) {
+    ctx.beginPath(); ctx.moveTo(x, 128); ctx.lineTo(x, H - 18); ctx.stroke();
+  }
+  for (let y = 128; y < H; y += 48) {
+    ctx.beginPath(); ctx.moveTo(16, y); ctx.lineTo(W - 16, y); ctx.stroke();
+  }
+  for (const x of [210, 640, 1070]) {
+    const glow = ctx.createRadialGradient(x, 143, 5, x, 143, 150);
+    glow.addColorStop(0, "#fff5c72b");
+    glow.addColorStop(1, "#fff5c700");
+    ctx.fillStyle = glow;
+    ctx.fillRect(x - 150, 130, 300, 230);
+    ctx.fillStyle = "#fff0c9";
+    rounded(ctx, x - 22, 119, 44, 6, 3);
+  }
+  ctx.restore();
   ctx.fillStyle = "#46504b";
   ctx.fillRect(20, 118, W - 40, 14);
   ctx.fillRect(20, H - 18, W - 40, 14);
@@ -6532,6 +6645,15 @@ function drawCornfield(t) {
   ctx.fillStyle = "#35432c";
   ctx.fillRect(0, 0, W, H);
   for (let y = offset; y < H; y += tile) ctx.drawImage(fieldBackdrop, 0, y);
+  // Dark furrows and broken leaf highlights make the dense rows read as a field.
+  ctx.save();
+  for (let x = 24; x < W; x += 64) {
+    ctx.fillStyle = "#17231820";
+    ctx.fillRect(x, 0, 9, H);
+    ctx.fillStyle = "#d2bd6740";
+    ctx.fillRect(x + 18, 0, 2, H);
+  }
+  ctx.restore();
   for (let i = 0; i < 24; i++) {
     const side = i % 2 ? 1 : -1,
       x = side < 0 ? 18 + ((i * 67) % 250) : W - 18 - ((i * 67) % 250),
@@ -7103,12 +7225,18 @@ function update(dt, t) {
   }
   for (const c of cars) {
     const dx = player.x - c.x,
-      dy = player.y - c.y;
-    if (Math.abs(dx) < 39 && Math.abs(dy) < 28) {
+      dy = player.y - c.y,
+      collisionX = c.horizontal ? 39 : 28,
+      collisionY = c.horizontal ? 28 : 39;
+    if (Math.abs(dx) < collisionX && Math.abs(dy) < collisionY) {
       player.x = oldx;
       player.y = oldy;
       player.vx *= -0.32;
       player.vy *= -0.32;
+      if (stage === 1 && player.bump <= 0) {
+        time = Math.max(0, time - 1.5);
+        showToast("ЗІТКНЕННЯ · −1,5 СЕКУНДИ");
+      }
       player.bump = 0.65;
       score = Math.max(0, score - 12);
       tone(120, 0.12, "sawtooth", 0.035, -45);
@@ -7126,6 +7254,7 @@ function update(dt, t) {
       player.vx *= 0.65;
       player.vy *= 0.65;
       player.bump = 0.65;
+      if (stage === 1) time = Math.max(0, time - 0.5);
       score = Math.max(0, score - 5);
       showToast("ОЙ! ПЕРЕПРОШУЄМО ПІШОХОДА");
       tone(180, 0.08, "triangle", 0.025, -50);
@@ -7162,13 +7291,14 @@ function update(dt, t) {
     delivered++;
     streak++;
     bestStreak = Math.max(bestStreak, streak);
-    time = Math.min(99, time + 25);
+    time = Math.min(DELIVERY_TIME_CAP, time + DELIVERY_TIME_BONUS);
     score += 250 + Math.round(time * 2) + Math.min(streak, 10) * 25;
     chime();
-    document.getElementById("delivered").textContent = String(delivered);
+    document.getElementById("delivered").textContent =
+      `${delivered} / ${DELIVERY_GOAL}`;
     document.getElementById("timer").textContent = formatTime(time);
     tone(740, 0.12, "triangle", 0.045, 300);
-    if (delivered >= 5) {
+    if (delivered >= DELIVERY_GOAL) {
       deliveries = [];
       courierToCafe = true;
       document.getElementById("objectiveTitle").textContent =
@@ -7178,7 +7308,9 @@ function update(dt, t) {
       showToast("ПОСИЛКИ ДОСТАВЛЕНО. ЧАС ЇХАТИ НА ЗМІНУ!");
       return;
     }
-    showToast(`ПОСИЛКУ ДОСТАВЛЕНО! +25 СЕК · СЕРІЯ ×${streak}`);
+    showToast(
+      `ПОСИЛКУ ДОСТАВЛЕНО! +${DELIVERY_TIME_BONUS} СЕК · СЕРІЯ ×${streak}`,
+    );
     const next = nextDelivery();
     document.getElementById("objectiveTitle").textContent =
       `НАСТУПНА ЦІЛЬ: ${next.name}`;
@@ -7421,7 +7553,7 @@ function pollGamepad() {
     document.getElementById("objectiveTitle").textContent =
       `МІСІЯ: ${deliveries[0].name}`;
     document.getElementById("objectiveText").textContent =
-      "Кожна доставка додає +25 секунд. Тримай маршрут!";
+      `Кожна доставка додає +${DELIVERY_TIME_BONUS} секунд. Достав ${DELIVERY_GOAL} посилок!`;
     setupContinueButton();
   }
   boot();

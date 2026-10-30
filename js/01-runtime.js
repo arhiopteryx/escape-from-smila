@@ -19,6 +19,10 @@
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
   mctx.setTransform(DPR, 0, 0, DPR, 0, 0);
   const world = { w: 3600, h: 2800 };
+  const DELIVERY_GOAL = 7,
+    DELIVERY_START_TIME = 55,
+    DELIVERY_TIME_BONUS = 15,
+    DELIVERY_TIME_CAP = 85;
   const roadW = 188,
     roadsX = [420, 1080, 1740, 2400, 3060],
     roadsY = [360, 1000, 1640, 2280];
@@ -305,7 +309,7 @@
   let running = false,
     paused = false,
     won = false,
-    time = 60,
+    time = DELIVERY_START_TIME,
     score = 0,
     delivered = 0,
     streak = 0,
@@ -392,7 +396,7 @@
       } else if (!nearRoad(px, py) && rand() > 0.5)
         trees.push({ x: px, y: py, r: 13 + rand() * 10 });
     }
-  for (let i = 0; i < 30; i++) {
+  for (let i = 0; i < 40; i++) {
     let rx = roadsX[Math.floor(rand() * roadsX.length)],
       ry = roadsY[Math.floor(rand() * roadsY.length)];
     let horizontal = rand() > 0.5;
@@ -401,6 +405,7 @@
       y: horizontal ? ry + (rand() - 0.5) * 100 : rand() * world.h,
       horizontal,
       dir: rand() > 0.5 ? 1 : -1,
+      speed: 68 + rand() * 54,
       color: ["#d9d4bf", "#729197", "#bd755a", "#394954", "#e0b546"][
         Math.floor(rand() * 5)
       ],
@@ -413,7 +418,7 @@
       y: 130 + rand() * (world.h - 260),
       phase: rand() * 10,
     });
-  for (let i = 0; i < 74; i++) {
+  for (let i = 0; i < 88; i++) {
     const horizontal = rand() > 0.5,
       road = horizontal
         ? roadsY[Math.floor(rand() * roadsY.length)]
@@ -501,14 +506,30 @@
   function start() {
     saveCampaignChapter(1);
     focusGame();
+    keys.clear();
+    boostPressed = false;
+    interactPressed = false;
     churchEventUsed = false;
     azotEventUsed = false;
+    player.x = 260;
+    player.y = 380;
+    player.vx = 0;
+    player.vy = 0;
+    player.dir = 0;
+    player.boost = 0;
+    player.boostCd = 0;
     setHint(document.querySelector(".hint").innerHTML);
     stage = 1;
     courierToCafe = false;
     delivered = 0;
+    streak = 0;
     score = 0;
-    time = 60;
+    time = DELIVERY_START_TIME;
+    lastStop = -1;
+    nextDelivery();
+    document.getElementById("delivered").textContent =
+      `0 / ${DELIVERY_GOAL}`;
+    document.getElementById("timer").textContent = formatTime(time);
     document.getElementById("intro").classList.add("hidden");
     running = true;
     paused = false;

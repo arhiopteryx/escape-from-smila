@@ -135,6 +135,23 @@ function buildFactoryBackdrop() {
   }
   g.fillStyle = "#34343a";
   g.fillRect(128, 185, W - 256, H - 185);
+  // Heavy roof beams and pipe runs add scale to the brick factory interior.
+  for (const y of [190, 224, 738]) {
+    g.fillStyle = "#211d25";
+    g.fillRect(128, y, W - 256, 9);
+    g.fillStyle = "#a34a50";
+    g.fillRect(128, y + 9, W - 256, 3);
+  }
+  for (const x of [260, 1018]) {
+    g.fillStyle = "#241e26";
+    g.fillRect(x, 185, 13, H - 185);
+    g.fillStyle = "#42cfc6";
+    g.fillRect(x + 4, 205, 4, H - 225);
+  }
+  g.fillStyle = "#ffb24d";
+  for (const x of [172, 1128]) {
+    g.beginPath(); g.arc(x, 242, 6, 0, Math.PI * 2); g.fill();
+  }
   for (let y = 220; y < H; y += 90) {
     g.strokeStyle = "#4a4a50";
     g.lineWidth = 2;
@@ -1513,6 +1530,21 @@ function drawForest(t) {
   ctx.setLineDash([18, 18]);
   ctx.stroke();
   ctx.setLineDash([]);
+  // Wheel ruts, scattered leaves and trail-side stones help the route stand out.
+  ctx.save();
+  ctx.globalAlpha = 0.28;
+  ctx.strokeStyle = "#745f3e";
+  ctx.lineWidth = 4;
+  for (let y = 40; y < H; y += 58) {
+    const bend = Math.sin((y + cameraY) * 0.012) * 16;
+    for (const side of [-1, 1]) {
+      ctx.beginPath();
+      ctx.moveTo(W / 2 + bend + side * 24, y);
+      ctx.lineTo(W / 2 + bend + side * 31, y + 34);
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
   for (const tree of forest.trees) {
     const sx = tree.x - cameraX,
       sy = tree.y - cameraY;
@@ -1541,6 +1573,10 @@ function drawForest(t) {
     ctx.fillStyle = "#77a94e";
     ctx.beginPath();
     ctx.arc(sx - 7 + sway, sy - 8, tree.r * 0.28, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#c6d77655";
+    ctx.beginPath();
+    ctx.arc(sx + sway - 15, sy - 16, tree.r * 0.2, 0, Math.PI * 2);
     ctx.fill();
   }
   for (const q of forest.tracks) {

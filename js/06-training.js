@@ -19,6 +19,26 @@ function drawTrainingStage(t) {
       ctx.fillStyle = (x / 48 + y / 48) % 2 ? "#c7c6ad" : "#b7bea8";
       ctx.fillRect(x, y, 45, 45);
     }
+  // Fine grout, soft ceiling pools and floor reflections clarify the tiled room.
+  ctx.save();
+  ctx.strokeStyle = "#66736b35";
+  ctx.lineWidth = 1;
+  for (let x = 16; x < W; x += 48) {
+    ctx.beginPath(); ctx.moveTo(x, 128); ctx.lineTo(x, H - 18); ctx.stroke();
+  }
+  for (let y = 128; y < H; y += 48) {
+    ctx.beginPath(); ctx.moveTo(16, y); ctx.lineTo(W - 16, y); ctx.stroke();
+  }
+  for (const x of [210, 640, 1070]) {
+    const glow = ctx.createRadialGradient(x, 143, 5, x, 143, 150);
+    glow.addColorStop(0, "#fff5c72b");
+    glow.addColorStop(1, "#fff5c700");
+    ctx.fillStyle = glow;
+    ctx.fillRect(x - 150, 130, 300, 230);
+    ctx.fillStyle = "#fff0c9";
+    rounded(ctx, x - 22, 119, 44, 6, 3);
+  }
+  ctx.restore();
   ctx.fillStyle = "#46504b";
   ctx.fillRect(20, 118, W - 40, 14);
   ctx.fillRect(20, H - 18, W - 40, 14);
@@ -871,6 +891,15 @@ function drawCornfield(t) {
   ctx.fillStyle = "#35432c";
   ctx.fillRect(0, 0, W, H);
   for (let y = offset; y < H; y += tile) ctx.drawImage(fieldBackdrop, 0, y);
+  // Dark furrows and broken leaf highlights make the dense rows read as a field.
+  ctx.save();
+  for (let x = 24; x < W; x += 64) {
+    ctx.fillStyle = "#17231820";
+    ctx.fillRect(x, 0, 9, H);
+    ctx.fillStyle = "#d2bd6740";
+    ctx.fillRect(x + 18, 0, 2, H);
+  }
+  ctx.restore();
   for (let i = 0; i < 24; i++) {
     const side = i % 2 ? 1 : -1,
       x = side < 0 ? 18 + ((i * 67) % 250) : W - 18 - ((i * 67) % 250),

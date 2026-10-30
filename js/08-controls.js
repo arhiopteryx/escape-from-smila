@@ -183,7 +183,7 @@
     document.getElementById("objectiveTitle").textContent =
       `МІСІЯ: ${deliveries[0].name}`;
     document.getElementById("objectiveText").textContent =
-      "Кожна доставка додає +25 секунд. Тримай маршрут!";
+      `Кожна доставка додає +${DELIVERY_TIME_BONUS} секунд. Достав ${DELIVERY_GOAL} посилок!`;
     setupContinueButton();
   }
   boot();
