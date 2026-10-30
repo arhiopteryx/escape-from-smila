@@ -140,12 +140,10 @@
       meest: new Image(),
     },
     ermolinoLogo = new Image();
-  const pixelCourier = new Image();
   logos.ukrposhta.src = "assets/ukrposhta.png";
   logos.nova.src = "assets/nova-poshta.png";
   logos.meest.src = "assets/meest.png";
   ermolinoLogo.src = "assets/ermolino-logo.png";
-  pixelCourier.src = "assets/pixel-courier.png";
   let deliveries = [],
     lastStop = -1,
     courierToCafe = false;
@@ -4532,21 +4530,6 @@ function drawPlayer(t) {
       ctx.fill();
     }
     ctx.globalAlpha = 1;
-  }
-  if (stage === 1 && pixelCourier.complete && pixelCourier.naturalWidth) {
-    ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(pixelCourier, -32, -86, 64, 172);
-    ctx.restore();
-    if (player.bump > 0) {
-      ctx.save();
-      ctx.globalAlpha = Math.min(1, player.bump * 2);
-      ctx.fillStyle = "#fff1a6";
-      ctx.font = "bold 16px Arial,sans-serif";
-      ctx.textAlign = "center";
-      ctx.fillText("ОЙ!", player.x + 25, player.y - 26);
-      ctx.restore();
-    }
-    return;
   }
   ctx.fillStyle = "#0008";
   ctx.beginPath();
