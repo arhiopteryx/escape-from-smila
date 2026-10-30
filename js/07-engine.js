@@ -1,27 +1,32 @@
-const pixelWorldCanvas = document.createElement("canvas");
-pixelWorldCanvas.width = Math.max(1, Math.round(W * DPR * 0.5));
-pixelWorldCanvas.height = Math.max(1, Math.round(H * DPR * 0.5));
-const pixelWorldCtx = pixelWorldCanvas.getContext("2d");
-
-function drawStageWorld(t) {
-  if (stage !== 1) {
-    drawWorld(t);
+function drawRoutePointer(route) {
+  for (let i = 1; i < route.length; i++) {
+    const a = route[i - 1],
+      b = route[i],
+      dx = b.x - a.x,
+      dy = b.y - a.y,
+      length = Math.hypot(dx, dy);
+    if (length < 48) continue;
+    const distance = Math.min(56, length * 0.52),
+      x = a.x + (dx / length) * distance,
+      y = a.y + (dy / length) * distance;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(Math.atan2(dy, dx));
+    ctx.fillStyle = "#172128";
+    ctx.strokeStyle = "#fff2ba";
+    ctx.lineWidth = 2;
+    ctx.setLineDash([]);
+    ctx.beginPath();
+    ctx.moveTo(10, 0);
+    ctx.lineTo(-5, -7);
+    ctx.lineTo(-2, 0);
+    ctx.lineTo(-5, 7);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
     return;
   }
-  const screenCtx = ctx;
-  pixelWorldCtx.setTransform(DPR * 0.5, 0, 0, DPR * 0.5, 0, 0);
-  pixelWorldCtx.imageSmoothingEnabled = false;
-  ctx = pixelWorldCtx;
-  try {
-    drawWorld(t);
-  } finally {
-    ctx = screenCtx;
-  }
-  screenCtx.save();
-  screenCtx.setTransform(1, 0, 0, 1, 0, 0);
-  screenCtx.imageSmoothingEnabled = false;
-  screenCtx.drawImage(pixelWorldCanvas, 0, 0, canvas.width, canvas.height);
-  screenCtx.restore();
 }
 
 function drawWorld(t) {
@@ -60,6 +65,7 @@ function drawWorld(t) {
   ctx.translate(W / 2 - player.x, H / 2 - player.y);
   drawGround();
   drawScenery(t);
+  drawStreetLights(t);
   drawDistrict();
   if (stage === 1 || stage === 3) drawSmilaLandmarks(t);
   if (stage === 3) drawNeonCity(t);
@@ -85,9 +91,9 @@ function drawWorld(t) {
     const route = cityRoute(player, navTarget);
     ctx.save();
     ctx.strokeStyle = "#172128b8";
-    ctx.lineWidth = 15;
-    ctx.lineJoin = "round";
-    ctx.lineCap = "round";
+    ctx.lineWidth = 12;
+    ctx.lineJoin = "bevel";
+    ctx.lineCap = "butt";
     ctx.setLineDash([]);
     ctx.beginPath();
     route.forEach((q, i) => {
@@ -96,14 +102,15 @@ function drawWorld(t) {
     });
     ctx.stroke();
     ctx.strokeStyle = "#ffd66d";
-    ctx.lineWidth = 7;
-    ctx.setLineDash([15, 11]);
+    ctx.lineWidth = 5;
+    ctx.setLineDash([18, 13]);
     ctx.beginPath();
     route.forEach((q, i) => {
       if (!i) ctx.moveTo(q.x, q.y);
       else ctx.lineTo(q.x, q.y);
     });
     ctx.stroke();
+    drawRoutePointer(route);
     ctx.restore();
   }
   cars.forEach((c) => drawCar(c, t));
@@ -222,6 +229,8 @@ function drawMini() {
     const route = cityRoute(player, goal);
     mctx.strokeStyle = stage === 3 ? "#ffd77a" : "#fff1a8";
     mctx.lineWidth = 2;
+    mctx.lineJoin = "miter";
+    mctx.lineCap = "butt";
     mctx.setLineDash([5, 4]);
     mctx.beginPath();
     route.forEach((q, i) => {
@@ -527,7 +536,7 @@ function loop(now) {
   last = now;
   const t = now / 1000;
   update(dt, t);
-  drawStageWorld(t);
+  drawWorld(t);
   drawMini();
   scheduleLoop();
 }

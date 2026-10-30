@@ -4113,11 +4113,14 @@ function drawPedestrian(p, t) {
     }
     return;
   }
+  if (p.axis === "h") ctx.rotate(p.dir > 0 ? Math.PI / 2 : -Math.PI / 2);
+  else if (p.dir < 0) ctx.rotate(Math.PI);
+  const step = Math.sin(t * 10 + p.phase) * (p.fleeing > 0 ? 3 : 1.7);
   ctx.fillStyle = p.color;
   rounded(ctx, -6, -5, 12, 14, 4);
   ctx.fillStyle = "#26353c";
-  ctx.fillRect(-5, 7, 4, 8);
-  ctx.fillRect(2, 7, 4, 8);
+  ctx.fillRect(-5, 7 + step, 4, 8);
+  ctx.fillRect(2, 7 - step, 4, 8);
   ctx.fillStyle = "#d9ad82";
   ctx.beginPath();
   ctx.arc(0, -10, 7, 0, Math.PI * 2);
@@ -4136,23 +4139,6 @@ function drawGround() {
   const night = stage === 3;
   ctx.fillStyle = night ? "#19242a" : "#9bb58b";
   ctx.fillRect(0, 0, world.w, world.h);
-  ctx.save();
-  ctx.globalAlpha = night ? 0.38 : 0.13;
-  ctx.strokeStyle = night ? "#29363c" : "#e6e2bd";
-  ctx.lineWidth = 2;
-  for (let x = 20; x < world.w; x += 48) {
-    ctx.beginPath();
-    ctx.moveTo(x, 0);
-    ctx.lineTo(x, world.h);
-    ctx.stroke();
-  }
-  for (let y = 15; y < world.h; y += 48) {
-    ctx.beginPath();
-    ctx.moveTo(0, y);
-    ctx.lineTo(world.w, y);
-    ctx.stroke();
-  }
-  ctx.restore();
   for (let i = 0; i < roadsX.length - 1; i++)
     for (let j = 0; j < roadsY.length - 1; j++) {
       const x = roadsX[i] + 120,
@@ -4162,19 +4148,74 @@ function drawGround() {
       ctx.fillStyle = night ? "#263639" : "#aac19a";
       rounded(ctx, x + 15, y + 15, 390, 370, 12);
     }
-  ctx.fillStyle = night ? "#3c4141" : "#b7b9a4";
+  for (let x = 60; x < world.w; x += 140)
+    for (let y = 60; y < world.h; y += 130) {
+      if (nearRoad(x, y) || (Math.floor(x / 140) + Math.floor(y / 130)) % 4)
+        continue;
+      ctx.fillStyle = night ? "#8ca38b20" : "#edf0cf35";
+      ctx.beginPath();
+      ctx.ellipse(x, y, 5, 2.5, ((x + y) % 3) * 0.4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  const pavement = night ? "#3c4141" : "#c9c1aa",
+    sidewalk = night ? "#555653" : "#dfd5bb",
+    asphalt = night ? "#171d22" : "#48515a",
+    curb = night ? "#78776c" : "#f0e7cf";
+  ctx.fillStyle = pavement;
+  roadsX.forEach((x) =>
+    ctx.fillRect(x - roadW / 2 - 22, 0, roadW + 44, world.h),
+  );
+  roadsY.forEach((y) =>
+    ctx.fillRect(0, y - roadW / 2 - 22, world.w, roadW + 44),
+  );
   roadsX.forEach((x) => {
-    ctx.fillRect(x - roadW / 2 - 20, 0, roadW + 40, world.h);
-    ctx.fillStyle = night ? "#171d22" : "#48515a";
-    ctx.fillRect(x - roadW / 2, 0, roadW, world.h);
-    ctx.fillStyle = night ? "#3c4141" : "#b7b9a4";
+    ctx.fillStyle = sidewalk;
+    ctx.fillRect(x - roadW / 2 - 18, 0, 14, world.h);
+    ctx.fillRect(x + roadW / 2 + 4, 0, 14, world.h);
   });
   roadsY.forEach((y) => {
-    ctx.fillRect(0, y - roadW / 2 - 20, world.w, roadW + 40);
-    ctx.fillStyle = night ? "#171d22" : "#48515a";
-    ctx.fillRect(0, y - roadW / 2, world.w, roadW);
-    ctx.fillStyle = night ? "#3c4141" : "#b7b9a4";
+    ctx.fillStyle = sidewalk;
+    ctx.fillRect(0, y - roadW / 2 - 18, world.w, 14);
+    ctx.fillRect(0, y + roadW / 2 + 4, world.w, 14);
   });
+  roadsX.forEach((x) => {
+    ctx.fillStyle = asphalt;
+    ctx.fillRect(x - roadW / 2, 0, roadW, world.h);
+  });
+  roadsY.forEach((y) => {
+    ctx.fillStyle = asphalt;
+    ctx.fillRect(0, y - roadW / 2, world.w, roadW);
+  });
+  ctx.save();
+  ctx.strokeStyle = curb;
+  ctx.lineWidth = 2;
+  roadsX.forEach((x) => {
+    for (const edge of [x - roadW / 2, x + roadW / 2]) {
+      ctx.beginPath();
+      ctx.moveTo(edge, 0);
+      ctx.lineTo(edge, world.h);
+      ctx.stroke();
+    }
+    for (let y = 12; y < world.h; y += 72) {
+      ctx.fillStyle = pavement;
+      ctx.fillRect(x - roadW / 2 - 12, y, 2, 18);
+      ctx.fillRect(x + roadW / 2 + 10, y, 2, 18);
+    }
+  });
+  roadsY.forEach((y) => {
+    for (const edge of [y - roadW / 2, y + roadW / 2]) {
+      ctx.beginPath();
+      ctx.moveTo(0, edge);
+      ctx.lineTo(world.w, edge);
+      ctx.stroke();
+    }
+    for (let x = 12; x < world.w; x += 72) {
+      ctx.fillStyle = pavement;
+      ctx.fillRect(x, y - roadW / 2 - 12, 18, 2);
+      ctx.fillRect(x, y + roadW / 2 + 10, 18, 2);
+    }
+  });
+  ctx.restore();
   ctx.save();
   ctx.setLineDash([24, 22]);
   ctx.strokeStyle = night ? "#8c7751" : "#e8d997";
@@ -4191,6 +4232,25 @@ function drawGround() {
     ctx.lineTo(world.w, y);
     ctx.stroke();
   });
+  ctx.strokeStyle = night ? "#c5c2ae55" : "#e7e8dcbb";
+  ctx.lineWidth = 2;
+  ctx.setLineDash([16, 20]);
+  roadsX.forEach((x) =>
+    [-34, 34].forEach((offset) => {
+      ctx.beginPath();
+      ctx.moveTo(x + offset, 0);
+      ctx.lineTo(x + offset, world.h);
+      ctx.stroke();
+    }),
+  );
+  roadsY.forEach((y) =>
+    [-34, 34].forEach((offset) => {
+      ctx.beginPath();
+      ctx.moveTo(0, y + offset);
+      ctx.lineTo(world.w, y + offset);
+      ctx.stroke();
+    }),
+  );
   ctx.restore();
   ctx.fillStyle = night ? "#9a8a67" : "#f1e6c4";
   roadsX.forEach((x) =>
@@ -4218,34 +4278,47 @@ function drawScenery(t) {
       b.y - b.h > maxY
     )
       continue;
+    const left = b.x - b.w / 2,
+      top = b.y - b.h / 2;
+    // Small front yard and a stone entrance path make each block read as a
+    // neighborhood instead of a field of isolated roof tiles.
+    ctx.fillStyle = night ? "#26352e" : "#9eb67f";
+    rounded(ctx, left - 10, top - 9, b.w + 20, b.h + 24, 8);
+    ctx.fillStyle = night ? "#444742" : "#c8bea6";
+    ctx.fillRect(b.x - 7, top + b.h - 1, 14, 30);
     ctx.fillStyle = "#0005";
-    rounded(ctx, b.x - b.w / 2 + 6, b.y - b.h / 2 + 8, b.w, b.h, 7);
-    ctx.fillStyle = night ? "#42494b" : "#d2cbb1";
-    rounded(ctx, b.x - b.w / 2 - 3, b.y - b.h / 2 - 3, b.w + 6, b.h + 6, 7);
+    rounded(ctx, left + 2, top + 5, b.w + 3, b.h + 3, 6);
+    ctx.fillStyle = night ? "#45494a" : "#d7cbb3";
+    rounded(ctx, left - 3, top - 3, b.w + 6, b.h + 6, 6);
     ctx.fillStyle = night ? "#27343a" : b.roof;
-    rounded(ctx, b.x - b.w / 2, b.y - b.h / 2, b.w, b.h, 6);
+    rounded(ctx, left, top, b.w, b.h, 4);
     ctx.fillStyle = night ? "#34434a" : b.c;
-    rounded(ctx, b.x - b.w / 2 + 5, b.y - b.h / 2 + 6, b.w - 10, b.h - 16, 5);
-    ctx.fillStyle = night ? "#62635c" : "#d7d0b1";
-    ctx.fillRect(b.x - b.w / 2 + 7, b.y + b.h / 2 - 16, b.w - 14, 9);
-    for (let wx = b.x - b.w / 2 + 12; wx < b.x + b.w / 2 - 9; wx += 19)
-      for (let wy = b.y - b.h / 2 + 13; wy < b.y + b.h / 2 - 16; wy += 21) {
-        ctx.fillStyle = night
-          ? (Math.floor(wx / 19) +
-              Math.floor(wy / 21) +
-              Math.floor(b.kind * 4)) %
-              4 ===
-            0
-            ? "#f2cb7b"
-            : "#45545b"
-          : "#a7d4cf";
-        ctx.fillRect(wx, wy, 8, 7);
-        ctx.fillStyle = night ? "#b99058" : "#debe82";
-        ctx.fillRect(wx + 3, wy + 7, 2, 7);
-      }
-    if (b.kind > 0.92) {
-      ctx.fillStyle = night ? "#d5ad64" : "#f0d889";
-      ctx.fillRect(b.x - 7, b.y - b.h / 2 + 2, 14, 5);
+    ctx.fillRect(left + 5, top + 5, b.w - 10, 5);
+    ctx.fillStyle = night ? "#171f23" : "#574b48";
+    ctx.fillRect(left + 5, top + b.h - 10, b.w - 10, 5);
+    ctx.fillStyle = night ? "#8c998f" : "#eadfc6";
+    for (let wx = left + 9; wx < left + b.w - 8; wx += 20) {
+      ctx.fillRect(wx, top + 2, 8, 3);
+      ctx.fillRect(wx, top + b.h - 5, 8, 3);
+    }
+    // Roof ridges, skylights and vents distinguish houses without image sprites.
+    ctx.fillStyle = night ? "#63716e" : "#ead9ad";
+    ctx.fillRect(left + 8, b.y - 1, b.w - 16, 3);
+    const ventX = left + 11 + (b.kind * 31) % Math.max(14, b.w - 30),
+      ventY = top + 14 + (b.kind * 19) % Math.max(12, b.h - 30);
+    ctx.fillStyle = night ? "#182329" : "#46555a";
+    rounded(ctx, ventX, ventY, 15, 12, 2);
+    ctx.fillStyle = night ? "#d2a76b" : "#a8d2ca";
+    ctx.fillRect(ventX + 3, ventY + 2, 9, 3);
+    ctx.fillStyle = night ? "#665749" : "#8e6049";
+    ctx.fillRect(left + b.w - 18, top + 8, 9, 12);
+    ctx.fillStyle = night ? "#303a3c" : "#c8b796";
+    ctx.fillRect(left + b.w - 20, top + 6, 13, 3);
+    if (b.kind > 0.72) {
+      ctx.fillStyle = night ? "#839088" : "#d7d4c4";
+      ctx.fillRect(left + b.w * 0.52, top + 10, 12, 16);
+      ctx.fillStyle = night ? "#edd08c" : "#91aaa4";
+      ctx.fillRect(left + b.w * 0.52 + 2, top + 12, 8, 5);
     }
   }
   for (const tr of trees) {
@@ -4322,75 +4395,181 @@ function drawScenery(t) {
     ctx.fillRect(p.x + 6, p.y - 1, 3, 2);
   }
 }
+function drawStreetLights(t) {
+  const night = stage === 3,
+    minX = player.x - W * 0.62,
+    maxX = player.x + W * 0.62,
+    minY = player.y - H * 0.62,
+    maxY = player.y + H * 0.62,
+    lamps = [];
+  roadsX.forEach((roadX) => {
+    for (let y = 680; y < world.h; y += 640)
+      for (const side of [-1, 1]) lamps.push([roadX + side * 106, y]);
+  });
+  roadsY.forEach((roadY) => {
+    for (let x = 750; x < world.w; x += 660)
+      for (const side of [-1, 1]) lamps.push([x, roadY + side * 106]);
+  });
+  for (const [x, y] of lamps) {
+    if (x < minX || x > maxX || y < minY || y > maxY) continue;
+    if (night) {
+      const glow = ctx.createRadialGradient(x, y - 4, 1, x, y - 4, 40);
+      glow.addColorStop(0, "#ffcf7866");
+      glow.addColorStop(1, "#ffcf7800");
+      ctx.fillStyle = glow;
+      ctx.fillRect(x - 40, y - 44, 80, 80);
+    }
+    ctx.fillStyle = "#0004";
+    ctx.beginPath();
+    ctx.ellipse(x + 4, y + 5, 10, 5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = night ? "#7b8279" : "#65716d";
+    rounded(ctx, x - 2, y - 8, 4, 16, 2);
+    ctx.fillStyle = night ? "#343f42" : "#435457";
+    rounded(ctx, x - 7, y - 13, 14, 7, 3);
+    ctx.fillStyle = night ? "#ffd487" : "#f3d58e";
+    rounded(ctx, x - 4, y - 11, 8, 3, 1);
+  }
+}
 function drawSmilaLandmarks(t) {
   ctx.save();
   ctx.translate(700, 760);
-  ctx.fillStyle = "#0005";
+  ctx.fillStyle = "#617255";
+  rounded(ctx, -136, -122, 272, 231, 17);
+  ctx.fillStyle = "#c8c2a3";
+  rounded(ctx, -126, -112, 252, 211, 14);
+  ctx.fillStyle = "#a4b37c";
+  rounded(ctx, -118, -104, 236, 195, 12);
+  ctx.fillStyle = "#d5c9a8";
+  ctx.fillRect(-13, 46, 26, 58);
+  ctx.fillRect(-84, 53, 168, 22);
+  for (const [x, y] of [
+    [-104, -83],
+    [104, -83],
+    [-104, 69],
+    [104, 69],
+  ]) {
+    ctx.fillStyle = "#53734d";
+    ctx.beginPath();
+    ctx.arc(x, y, 13, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#7e9f61";
+    ctx.beginPath();
+    ctx.arc(x - 3, y - 3, 8, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.fillStyle = "#e3d7bd";
+  rounded(ctx, -82, -59, 164, 133, 12);
+  ctx.fillStyle = "#6d5360";
+  rounded(ctx, -72, -50, 144, 113, 9);
+  ctx.fillStyle = "#9c666a";
+  ctx.fillRect(-65, -43, 130, 12);
+  ctx.fillStyle = "#c9b792";
+  ctx.fillRect(-8, 22, 16, 39);
+  ctx.fillStyle = "#26333c";
+  ctx.fillRect(-5, 39, 10, 23);
+  ctx.fillStyle = "#e8d7ad";
   ctx.beginPath();
-  ctx.ellipse(0, 68, 112, 28, 0, 0, Math.PI * 2);
+  ctx.ellipse(0, -5, 34, 30, 0, 0, Math.PI * 2);
   ctx.fill();
-  ctx.fillStyle = "#d8d0ba";
-  rounded(ctx, -92, -5, 184, 77, 7);
-  ctx.fillStyle = "#b94a43";
+  ctx.fillStyle = "#4b7790";
   ctx.beginPath();
-  ctx.moveTo(-104, 2);
-  ctx.lineTo(0, -65);
-  ctx.lineTo(104, 2);
+  ctx.ellipse(0, -9, 26, 23, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#d7aa55";
+  ctx.beginPath();
+  ctx.ellipse(0, -13, 17, 16, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#f4d784";
+  ctx.fillRect(-2, -42, 4, 20);
+  ctx.fillRect(-8, -37, 16, 4);
+  ctx.fillStyle = "#d7aa55";
+  ctx.beginPath();
+  ctx.moveTo(-18, -48);
+  ctx.lineTo(0, -66);
+  ctx.lineTo(18, -48);
   ctx.closePath();
   ctx.fill();
-  ctx.fillStyle = "#35414b";
-  ctx.fillRect(-19, 22, 38, 50);
-  ctx.fillStyle = "#f6da8b";
-  ctx.beginPath();
-  ctx.arc(0, -49, 5, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = "#21303a";
-  rounded(ctx, -83, -23, 166, 21, 5);
-  ctx.fillStyle = "#fff4dd";
-  ctx.font = "bold 11px Arial";
+  ctx.fillStyle = "#f4d784";
+  ctx.fillRect(-2, -78, 4, 16);
+  ctx.fillRect(-7, -74, 14, 3);
+  ctx.fillStyle = "#23313a";
+  rounded(ctx, -84, 105, 168, 24, 5);
+  ctx.fillStyle = "#fff3d6";
+  ctx.font = "bold 12px Arial";
   ctx.textAlign = "center";
-  ctx.fillText("СВЯТА ЦЕРКВА СМІЛИ", 0, -8);
+  ctx.fillText("ЦЕРКВА СМІЛИ", 0, 122);
   ctx.restore();
   ctx.save();
-  ctx.translate(2760, 2110);
-  ctx.fillStyle = "#273236";
-  rounded(ctx, -175, -60, 350, 124, 11);
-  ctx.fillStyle = "#566466";
-  rounded(ctx, -151, -48, 110, 105, 5);
-  ctx.fillStyle = "#7a8581";
-  ctx.fillRect(-135, -35, 82, 10);
-  ctx.fillStyle = "#87918b";
-  ctx.fillRect(-135, -14, 82, 8);
-  ctx.fillStyle = "#3c4849";
-  rounded(ctx, 8, -31, 95, 91, 5);
-  for (const [x, h] of [
-    [-109, 105],
-    [-30, 145],
-    [53, 124],
+  ctx.translate(2760, 2034);
+  ctx.fillStyle = "#0006";
+  rounded(ctx, -218, -78, 436, 244, 18);
+  ctx.fillStyle = "#576160";
+  rounded(ctx, -224, -88, 436, 244, 18);
+  ctx.fillStyle = "#98a295";
+  rounded(ctx, -213, -77, 414, 222, 14);
+  ctx.fillStyle = "#697976";
+  rounded(ctx, -190, -57, 236, 174, 10);
+  ctx.fillStyle = "#526363";
+  rounded(ctx, -181, -48, 218, 155, 8);
+  ctx.fillStyle = "#8ca49a";
+  ctx.fillRect(-168, -34, 68, 10);
+  ctx.fillRect(-168, -14, 68, 7);
+  ctx.fillRect(-168, 4, 68, 7);
+  ctx.fillStyle = "#38494b";
+  rounded(ctx, 58, -48, 124, 154, 9);
+  ctx.fillStyle = "#7d9390";
+  ctx.fillRect(72, -34, 96, 14);
+  ctx.fillStyle = "#4e6664";
+  ctx.fillRect(72, -8, 96, 100);
+  ctx.fillStyle = "#d2915c";
+  ctx.fillRect(-194, 118, 392, 8);
+  for (let x = -194; x <= 194; x += 24) {
+    ctx.fillStyle = "#63716c";
+    ctx.fillRect(x, 129, 10, 9);
+  }
+  for (const [x, h, w] of [
+    [-128, 132, 34],
+    [-47, 184, 38],
+    [42, 151, 31],
+    [128, 116, 34],
   ]) {
-    ctx.fillStyle = "#515d5e";
-    ctx.fillRect(x, -60 - h, 29, h);
-    ctx.fillStyle = "#d47f58";
-    ctx.fillRect(x + 8, -67 - h, 12, 7);
+    ctx.fillStyle = "#394a4c";
+    rounded(ctx, x - 4, -h - 61, w + 8, h + 15, 5);
+    ctx.fillStyle = "#75837d";
+    ctx.fillRect(x, -h - 55, w, h);
+    ctx.fillStyle = "#d8865d";
+    ctx.fillRect(x + 5, -h - 64, w - 10, 9);
+    ctx.fillStyle = "#f4c16e";
+    ctx.fillRect(x + w / 2 - 3, -h - 64, 6, 4);
     for (let k = 0; k < 3; k++) {
-      ctx.globalAlpha = 0.16;
-      ctx.fillStyle = "#b6beb5";
+      ctx.globalAlpha = 0.14;
+      ctx.fillStyle = "#e5e4cf";
       ctx.beginPath();
       ctx.arc(
-        x + 14,
-        Math.sin(t + k) * 4 - 74 - h - k * 16,
-        11 + k * 3,
+        x + w / 2 + Math.sin(t * 0.7 + k + x) * 5,
+        -h - 78 - k * 19,
+        12 + k * 3,
         0,
         Math.PI * 2,
       );
       ctx.fill();
+      ctx.globalAlpha = 1;
     }
-    ctx.globalAlpha = 1;
   }
-  ctx.fillStyle = "#f1ca80";
+  ctx.strokeStyle = "#d59462";
+  ctx.lineWidth = 7;
+  ctx.beginPath();
+  ctx.moveTo(44, 42);
+  ctx.lineTo(44, -28);
+  ctx.lineTo(58, -28);
+  ctx.moveTo(46, 42);
+  ctx.lineTo(183, 42);
+  ctx.stroke();
+  ctx.fillStyle = "#f2d18a";
   ctx.font = "900 17px Arial";
   ctx.textAlign = "center";
-  ctx.fillText("АЗОТ · СМІЛА", 0, 84);
+  ctx.fillText("АЗОТ · СМІЛА", -86, 141);
   ctx.restore();
 }
 function drawDistrict() {
@@ -4436,26 +4615,41 @@ function drawDistrict() {
   }
 }
 function drawCar(car, t) {
-  let bob = Math.sin(t * 2 + car.phase) * 1.5;
+  let bob = Math.sin(t * 2 + car.phase) * 0.8;
   ctx.save();
   ctx.translate(car.x, car.y + bob);
-  ctx.rotate(car.horizontal ? 0 : Math.PI / 2);
+  ctx.rotate(
+    car.horizontal
+      ? car.dir > 0
+        ? 0
+        : Math.PI
+      : car.dir > 0
+        ? Math.PI / 2
+        : -Math.PI / 2,
+  );
   ctx.fillStyle = "#0005";
   rounded(ctx, -29, -13, 62, 32, 9);
+  ctx.fillStyle = "#273039";
+  rounded(ctx, -30, -19, 17, 7, 3);
+  rounded(ctx, 13, -19, 17, 7, 3);
+  rounded(ctx, -30, 13, 17, 7, 3);
+  rounded(ctx, 13, 13, 17, 7, 3);
   ctx.fillStyle = car.color;
   rounded(ctx, -32, -16, 64, 30, 8);
   ctx.fillStyle = "#283940";
-  rounded(ctx, -14, -12, 28, 22, 6);
-  ctx.fillStyle = "#9fcac5";
-  ctx.fillRect(-10, -10, 20, 7);
-  ctx.fillStyle = "#313841";
-  ctx.fillRect(-28, -20, 12, 5);
-  ctx.fillRect(16, -20, 12, 5);
-  ctx.fillRect(-28, 15, 12, 5);
-  ctx.fillRect(16, 15, 12, 5);
-  ctx.fillStyle = "#fff1be";
-  ctx.fillRect(28, -11, 3, 5);
-  ctx.fillRect(28, 7, 3, 5);
+  rounded(ctx, -15, -12, 30, 24, 6);
+  ctx.fillStyle = "#a9d1ce";
+  rounded(ctx, -11, -9, 22, 9, 3);
+  ctx.fillStyle = "#73949a";
+  rounded(ctx, -11, 2, 22, 7, 3);
+  ctx.fillStyle = "#fff0bd";
+  rounded(ctx, 27, -11, 5, 7, 2);
+  rounded(ctx, 27, 3, 5, 7, 2);
+  ctx.fillStyle = "#e97958";
+  rounded(ctx, -33, -10, 4, 7, 2);
+  rounded(ctx, -33, 2, 4, 7, 2);
+  ctx.fillStyle = "#fff7d8";
+  ctx.fillRect(19, -2, 8, 3);
   ctx.restore();
 }
 function drawDelivery(d, i, t) {
@@ -4551,8 +4745,15 @@ function drawPlayer(t) {
   ctx.arc(0, -47, 4, 0, Math.PI * 2);
   ctx.arc(0, 46, 4, 0, Math.PI * 2);
   ctx.fill();
+  ctx.fillStyle = "#fff0ad";
+  rounded(ctx, -5, -64, 10, 5, 2);
+  ctx.fillStyle = "#f17458";
+  rounded(ctx, -5, 59, 10, 5, 2);
   ctx.fillStyle = "#1b3440";
   rounded(ctx, -13, -32, 26, 63, 8);
+  ctx.strokeStyle = "#91a9a5";
+  ctx.lineWidth = 2;
+  ctx.strokeRect(-13, -32, 26, 63);
   ctx.fillStyle = "#41d8c2";
   rounded(ctx, -9, -29, 18, 57, 6);
   ctx.fillStyle = "#f6d46e";
@@ -6490,30 +6691,35 @@ function showTrainingFail() {
 
 
 /* Source: js/07-engine.js */
-const pixelWorldCanvas = document.createElement("canvas");
-pixelWorldCanvas.width = Math.max(1, Math.round(W * DPR * 0.5));
-pixelWorldCanvas.height = Math.max(1, Math.round(H * DPR * 0.5));
-const pixelWorldCtx = pixelWorldCanvas.getContext("2d");
-
-function drawStageWorld(t) {
-  if (stage !== 1) {
-    drawWorld(t);
+function drawRoutePointer(route) {
+  for (let i = 1; i < route.length; i++) {
+    const a = route[i - 1],
+      b = route[i],
+      dx = b.x - a.x,
+      dy = b.y - a.y,
+      length = Math.hypot(dx, dy);
+    if (length < 48) continue;
+    const distance = Math.min(56, length * 0.52),
+      x = a.x + (dx / length) * distance,
+      y = a.y + (dy / length) * distance;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(Math.atan2(dy, dx));
+    ctx.fillStyle = "#172128";
+    ctx.strokeStyle = "#fff2ba";
+    ctx.lineWidth = 2;
+    ctx.setLineDash([]);
+    ctx.beginPath();
+    ctx.moveTo(10, 0);
+    ctx.lineTo(-5, -7);
+    ctx.lineTo(-2, 0);
+    ctx.lineTo(-5, 7);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
     return;
   }
-  const screenCtx = ctx;
-  pixelWorldCtx.setTransform(DPR * 0.5, 0, 0, DPR * 0.5, 0, 0);
-  pixelWorldCtx.imageSmoothingEnabled = false;
-  ctx = pixelWorldCtx;
-  try {
-    drawWorld(t);
-  } finally {
-    ctx = screenCtx;
-  }
-  screenCtx.save();
-  screenCtx.setTransform(1, 0, 0, 1, 0, 0);
-  screenCtx.imageSmoothingEnabled = false;
-  screenCtx.drawImage(pixelWorldCanvas, 0, 0, canvas.width, canvas.height);
-  screenCtx.restore();
 }
 
 function drawWorld(t) {
@@ -6552,6 +6758,7 @@ function drawWorld(t) {
   ctx.translate(W / 2 - player.x, H / 2 - player.y);
   drawGround();
   drawScenery(t);
+  drawStreetLights(t);
   drawDistrict();
   if (stage === 1 || stage === 3) drawSmilaLandmarks(t);
   if (stage === 3) drawNeonCity(t);
@@ -6577,9 +6784,9 @@ function drawWorld(t) {
     const route = cityRoute(player, navTarget);
     ctx.save();
     ctx.strokeStyle = "#172128b8";
-    ctx.lineWidth = 15;
-    ctx.lineJoin = "round";
-    ctx.lineCap = "round";
+    ctx.lineWidth = 12;
+    ctx.lineJoin = "bevel";
+    ctx.lineCap = "butt";
     ctx.setLineDash([]);
     ctx.beginPath();
     route.forEach((q, i) => {
@@ -6588,14 +6795,15 @@ function drawWorld(t) {
     });
     ctx.stroke();
     ctx.strokeStyle = "#ffd66d";
-    ctx.lineWidth = 7;
-    ctx.setLineDash([15, 11]);
+    ctx.lineWidth = 5;
+    ctx.setLineDash([18, 13]);
     ctx.beginPath();
     route.forEach((q, i) => {
       if (!i) ctx.moveTo(q.x, q.y);
       else ctx.lineTo(q.x, q.y);
     });
     ctx.stroke();
+    drawRoutePointer(route);
     ctx.restore();
   }
   cars.forEach((c) => drawCar(c, t));
@@ -6714,6 +6922,8 @@ function drawMini() {
     const route = cityRoute(player, goal);
     mctx.strokeStyle = stage === 3 ? "#ffd77a" : "#fff1a8";
     mctx.lineWidth = 2;
+    mctx.lineJoin = "miter";
+    mctx.lineCap = "butt";
     mctx.setLineDash([5, 4]);
     mctx.beginPath();
     route.forEach((q, i) => {
@@ -7019,7 +7229,7 @@ function loop(now) {
   last = now;
   const t = now / 1000;
   update(dt, t);
-  drawStageWorld(t);
+  drawWorld(t);
   drawMini();
   scheduleLoop();
 }
