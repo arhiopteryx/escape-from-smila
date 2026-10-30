@@ -218,17 +218,17 @@ function drawTrainingStage(t) {
   const cleanN = toiletStalls.filter((q) => q.progress >= 0.995).length;
   const phaseLabel =
     trainingPhase === "brush_pickup"
-      ? "1 · ВЗЯТИ ЩІТКУ"
+      ? "ЩІТКА: ВЗЯТИ"
       : trainingPhase === "brush_teeth"
-        ? "2 · ПОЧИСТИТИ ЗУБИ"
+        ? "ЩІТКА: ЗУБИ"
         : trainingPhase === "clean"
-          ? `3 · КАБІНКИ ${cleanN}/3`
+          ? `КАБІНКИ ${cleanN}/3`
           : trainingPhase === "return_brush"
-            ? "4 · ПОВЕРНУТИ ЩІТКУ"
-            : "5 · ВИЙТИ";
-  const statusLine = `${phaseLabel}  ·  ВІЗИТИ ${toiletGuestVisits}/7`;
+            ? "ЩІТКА: ПОВЕРНУТИ"
+            : "ВИХІД";
+  const statusLine = `${phaseLabel} · ${toiletGuestVisits}/7 ВІЗИТІВ`;
   ctx.font = "bold 13px Arial";
-  const title = "04A · ЩІТКА → 3 КАБІНКИ";
+  const title = "САНВУЗОЛ · 3 КАБІНКИ";
   const titleWidth = ctx.measureText(title).width;
   ctx.font = "bold 11px Arial";
   const statusWidth = ctx.measureText(statusLine).width;
