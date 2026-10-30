@@ -96,3 +96,10 @@ button{touch-action:manipulation;min-height:44px}button:focus-visible,summary:fo
 #game.arcade-mode .hint{display:none!important}
 
 #game.arcade-mode .toast{top:7%;max-width:min(72vw,520px);padding:8px 12px;font:12px/1.35 Arial,sans-serif;white-space:normal}
+
+#game.forest-mode .brand,#game.forest-mode .objective{display:none!important}
+#game.forest-mode .topbar{display:none!important}
+#game.forest-mode .hint{display:none!important}
+#game.forest-mode .toast{top:7%;max-width:min(72vw,520px);padding:8px 12px;font:12px/1.35 Arial,sans-serif;white-space:normal}
+
+#game.forest-mode .sound{bottom:1.5%;right:1.5%;padding:5px 8px;font-size:10px}
