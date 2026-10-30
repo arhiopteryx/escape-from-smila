@@ -1,6 +1,7 @@
+const PIXEL_SCALE = 0.25;
 const pixelWorldCanvas = document.createElement("canvas");
-pixelWorldCanvas.width = Math.max(1, Math.round(W * DPR * 0.5));
-pixelWorldCanvas.height = Math.max(1, Math.round(H * DPR * 0.5));
+pixelWorldCanvas.width = Math.max(1, Math.round(W * DPR * PIXEL_SCALE));
+pixelWorldCanvas.height = Math.max(1, Math.round(H * DPR * PIXEL_SCALE));
 const pixelWorldCtx = pixelWorldCanvas.getContext("2d");
 
 function drawStageWorld(t) {
@@ -9,7 +10,14 @@ function drawStageWorld(t) {
     return;
   }
   const screenCtx = ctx;
-  pixelWorldCtx.setTransform(DPR * 0.5, 0, 0, DPR * 0.5, 0, 0);
+  pixelWorldCtx.setTransform(
+    DPR * PIXEL_SCALE,
+    0,
+    0,
+    DPR * PIXEL_SCALE,
+    0,
+    0,
+  );
   pixelWorldCtx.imageSmoothingEnabled = false;
   ctx = pixelWorldCtx;
   try {
@@ -86,8 +94,8 @@ function drawWorld(t) {
     ctx.save();
     ctx.strokeStyle = "#172128b8";
     ctx.lineWidth = 15;
-    ctx.lineJoin = "round";
-    ctx.lineCap = "round";
+    ctx.lineJoin = stage === 1 ? "miter" : "round";
+    ctx.lineCap = stage === 1 ? "butt" : "round";
     ctx.setLineDash([]);
     ctx.beginPath();
     route.forEach((q, i) => {
@@ -371,7 +379,16 @@ function update(dt, t) {
   if (moving) {
     player.vx += ax * accel * dt;
     player.vy += ay * accel * dt;
-    player.dir = Math.atan2(player.vy, player.vx);
+    if (stage === 1) {
+      player.dir =
+        Math.abs(ax) >= Math.abs(ay)
+          ? ax >= 0
+            ? 0
+            : Math.PI
+          : ay >= 0
+            ? Math.PI / 2
+            : -Math.PI / 2;
+    } else player.dir = Math.atan2(player.vy, player.vx);
   } else {
     player.vx *= Math.pow(0.06, dt);
     player.vy *= Math.pow(0.06, dt);
