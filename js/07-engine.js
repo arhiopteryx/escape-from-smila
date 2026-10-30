@@ -1,3 +1,29 @@
+const pixelWorldCanvas = document.createElement("canvas");
+pixelWorldCanvas.width = Math.max(1, Math.round(W * DPR * 0.5));
+pixelWorldCanvas.height = Math.max(1, Math.round(H * DPR * 0.5));
+const pixelWorldCtx = pixelWorldCanvas.getContext("2d");
+
+function drawStageWorld(t) {
+  if (stage !== 1) {
+    drawWorld(t);
+    return;
+  }
+  const screenCtx = ctx;
+  pixelWorldCtx.setTransform(DPR * 0.5, 0, 0, DPR * 0.5, 0, 0);
+  pixelWorldCtx.imageSmoothingEnabled = false;
+  ctx = pixelWorldCtx;
+  try {
+    drawWorld(t);
+  } finally {
+    ctx = screenCtx;
+  }
+  screenCtx.save();
+  screenCtx.setTransform(1, 0, 0, 1, 0, 0);
+  screenCtx.imageSmoothingEnabled = false;
+  screenCtx.drawImage(pixelWorldCanvas, 0, 0, canvas.width, canvas.height);
+  screenCtx.restore();
+}
+
 function drawWorld(t) {
   if (stage === 3 && chaseBackdrop) {
     drawChaseWorld(t);
@@ -501,7 +527,7 @@ function loop(now) {
   last = now;
   const t = now / 1000;
   update(dt, t);
-  drawWorld(t);
+  drawStageWorld(t);
   drawMini();
   scheduleLoop();
 }

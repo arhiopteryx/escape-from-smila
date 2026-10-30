@@ -138,10 +138,12 @@
       meest: new Image(),
     },
     ermolinoLogo = new Image();
+  const pixelCourier = new Image();
   logos.ukrposhta.src = "assets/ukrposhta.png";
   logos.nova.src = "assets/nova-poshta.png";
   logos.meest.src = "assets/meest.png";
   ermolinoLogo.src = "assets/ermolino-logo.png";
+  pixelCourier.src = "assets/pixel-courier.png";
   let deliveries = [],
     lastStop = -1,
     courierToCafe = false;

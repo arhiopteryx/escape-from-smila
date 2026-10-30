@@ -140,10 +140,12 @@
       meest: new Image(),
     },
     ermolinoLogo = new Image();
+  const pixelCourier = new Image();
   logos.ukrposhta.src = "assets/ukrposhta.png";
   logos.nova.src = "assets/nova-poshta.png";
   logos.meest.src = "assets/meest.png";
   ermolinoLogo.src = "assets/ermolino-logo.png";
+  pixelCourier.src = "assets/pixel-courier.png";
   let deliveries = [],
     lastStop = -1,
     courierToCafe = false;
@@ -4531,6 +4533,21 @@ function drawPlayer(t) {
     }
     ctx.globalAlpha = 1;
   }
+  if (stage === 1 && pixelCourier.complete && pixelCourier.naturalWidth) {
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(pixelCourier, -32, -86, 64, 172);
+    ctx.restore();
+    if (player.bump > 0) {
+      ctx.save();
+      ctx.globalAlpha = Math.min(1, player.bump * 2);
+      ctx.fillStyle = "#fff1a6";
+      ctx.font = "bold 16px Arial,sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText("ОЙ!", player.x + 25, player.y - 26);
+      ctx.restore();
+    }
+    return;
+  }
   ctx.fillStyle = "#0008";
   ctx.beginPath();
   ctx.ellipse(2, 9, 30, 47, 0, 0, Math.PI * 2);
@@ -6490,6 +6507,32 @@ function showTrainingFail() {
 
 
 /* Source: js/07-engine.js */
+const pixelWorldCanvas = document.createElement("canvas");
+pixelWorldCanvas.width = Math.max(1, Math.round(W * DPR * 0.5));
+pixelWorldCanvas.height = Math.max(1, Math.round(H * DPR * 0.5));
+const pixelWorldCtx = pixelWorldCanvas.getContext("2d");
+
+function drawStageWorld(t) {
+  if (stage !== 1) {
+    drawWorld(t);
+    return;
+  }
+  const screenCtx = ctx;
+  pixelWorldCtx.setTransform(DPR * 0.5, 0, 0, DPR * 0.5, 0, 0);
+  pixelWorldCtx.imageSmoothingEnabled = false;
+  ctx = pixelWorldCtx;
+  try {
+    drawWorld(t);
+  } finally {
+    ctx = screenCtx;
+  }
+  screenCtx.save();
+  screenCtx.setTransform(1, 0, 0, 1, 0, 0);
+  screenCtx.imageSmoothingEnabled = false;
+  screenCtx.drawImage(pixelWorldCanvas, 0, 0, canvas.width, canvas.height);
+  screenCtx.restore();
+}
+
 function drawWorld(t) {
   if (stage === 3 && chaseBackdrop) {
     drawChaseWorld(t);
@@ -6993,7 +7036,7 @@ function loop(now) {
   last = now;
   const t = now / 1000;
   update(dt, t);
-  drawWorld(t);
+  drawStageWorld(t);
   drawMini();
   scheduleLoop();
 }
