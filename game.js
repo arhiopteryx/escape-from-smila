@@ -3965,14 +3965,20 @@ function updateChase(dt) {
     }
   }
   player.bump = Math.max(0, player.bump - dt);
-  const vSpeed = 252;
   chaseVan.stun = Math.max(0, (chaseVan.stun || 0) - dt);
-  const vanRoute = cityRoute(chaseVan, player),
-    vanTarget =
-      vanRoute.find(
-        (q, i) => i > 0 && Math.hypot(q.x - chaseVan.x, q.y - chaseVan.y) > 30,
-      ) || player,
+  const vanRoute = cityRoute(chaseVan, player);
+  // Follow the next road waypoint. Re-evaluating the first point by a fixed
+  // 30px threshold could skip a corner and leave the van oscillating there.
+  let vanTarget = vanRoute[1] || player;
+  if (Math.hypot(vanTarget.x - chaseVan.x, vanTarget.y - chaseVan.y) < 48)
+    vanTarget = vanRoute[2] || player;
+  let routeLen = Math.hypot(vanTarget.x - chaseVan.x, vanTarget.y - chaseVan.y);
+  if (routeLen < 1) {
+    vanTarget = player;
     routeLen = Math.hypot(vanTarget.x - chaseVan.x, vanTarget.y - chaseVan.y);
+  }
+  const gapToHero = Math.hypot(player.x - chaseVan.x, player.y - chaseVan.y),
+    vSpeed = clamp(250 + Math.max(0, gapToHero - 240) * 0.075, 250, 330);
   chaseVan.vx = routeLen ? ((vanTarget.x - chaseVan.x) / routeLen) * vSpeed : 0;
   chaseVan.vy = routeLen ? ((vanTarget.y - chaseVan.y) / routeLen) * vSpeed : 0;
   if (chaseVan.stun <= 0) {
