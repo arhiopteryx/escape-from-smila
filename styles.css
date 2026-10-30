@@ -94,3 +94,5 @@ button{touch-action:manipulation;min-height:44px}button:focus-visible,summary:fo
 #game.training-mode .sound{bottom:2%;right:1.3%;padding:6px 9px;font-size:10px}
 
 #game.arcade-mode .hint{display:none!important}
+
+#game.arcade-mode .toast{top:7%;max-width:min(72vw,520px);padding:8px 12px;font:12px/1.35 Arial,sans-serif;white-space:normal}
